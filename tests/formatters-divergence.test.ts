@@ -343,7 +343,7 @@ describe('C.1 byte formatters on the requested sizes', () => {
         },
         {
           "date": "epoch 0",
-          "out": "١ يناير، ٠٢:٠٠ ص",
+          "out": "١ يناير، ١٢:٠٠ ص",
         },
       ]
     `);
@@ -402,7 +402,7 @@ describe('C.1 byte formatters on the requested sizes', () => {
         },
         {
           "date": "epoch 0",
-          "out": "١ يناير ٠٢:٠٠ ص",
+          "out": "١ يناير ١٢:٠٠ ص",
         },
       ]
     `);
@@ -486,8 +486,8 @@ describe('C.1 byte formatters on the requested sizes', () => {
           "date": "2026-03-01 (Ramadan start in the fixture era)",
         },
         {
-          "C3": "١ يناير، ٠٢:٠٠ ص",
-          "C4": "١ يناير ٠٢:٠٠ ص",
+          "C3": "١ يناير، ١٢:٠٠ ص",
+          "C4": "١ يناير ١٢:٠٠ ص",
           "DISAGREE": true,
           "date": "epoch 0",
         },
