@@ -1,0 +1,63 @@
+{
+  "health": {
+    "status": 200,
+    "bodyKeys": [
+      "status",
+      "timestamp"
+    ],
+    "statusField": "ok",
+    "isIsoTimestamp": true
+  },
+  "extraction": {
+    "httpStatus": 200,
+    "topLevelKeys": [
+      "data",
+      "hasDigitalText",
+      "success"
+    ],
+    "success": true,
+    "hasDigitalText": true,
+    "data": {
+      "dataKeys": [
+        "detectedLanguage",
+        "hasArabicText",
+        "hasHandwriting",
+        "hasMathOrScience",
+        "hasTables",
+        "markdown",
+        "method",
+        "plainText",
+        "textDirection",
+        "title",
+        "totalPages"
+      ],
+      "title": "Untitled Lecture",
+      "detectedLanguage": "العربية",
+      "textDirection": "rtl",
+      "hasArabicText": true,
+      "hasTables": false,
+      "totalPages": 22,
+      "method": "direct_digital_extraction",
+      "markdown": {
+        "sha256": "9a6ccfd6855eb7c218d6eea2b3383ce392d95e92d4e22194169403e0eeb39c2c",
+        "length": 47524,
+        "head": "Untitled Lecture\nPage 1\tويﺎﺸﻨﻣ ﺪﻤﺣأ .د - Pharmacology\nوﺎﺸﻨﻣ ﺪﻤﺣأ\n1\tال ﻲﻓ ﻲﻓ ﺎﻧﺪﻨﻋ ﺎﻨﺣا ان ﺔﺟﺎﺣ اول ﻲﺗﻻا ﻂﺒﻈﻟﺎﺑ general ال اتﺮﺿﺎﺤﻣ ﻲﻓ ﻪﻴﻠﻋ ﻢﻠﻜﺘﻨﻫ ﻲﻠﻟا ﻪﻳا ﺎﻧا نﺎﺸﻋ\nوال ﻪﻳا ﻲﻨﻌﻳ pharmacokinetics هﺪﻛ مﺎﻤﺗ dynamic ﺎﻬﻤﺳا ﺔﺟﺎﺣو kinetic ﺎﻬﻤﺳا ﺔﺟﺎﺣ general\nﻪﻳا ﻲﻨﻌﻳ pharmacodynamics\n2\tهﺪﺧﺎﺑ ﻻو oral هﺪﻛ هﺪﺧﺎﺑ ﺎﻣ اول واﺪﻟا ﻲﻨﻌﻳ واﺪﻟا ﻲﻓ ﻪﻳا ﻞﻤﻌﻴﺑ ﻢﺴﺠﻟا ﻲﻨﻌﻳ pharmacokinetics ال\nدي هﺪﻛ مﺎﻤﺗ ازاي ﻪﻋزﻮﻴﺑ ازاي ﻪﺼ",
+        "tail": "er weight route of administration time ال ﻪﻳا ﺎﻤﻫ ﻲﻠﻟا dose\nال ةﺪﻛ tolerance وال of administration pathology pharmacogenetics drug interactions\nautonomic ال ﺪﺧﺎﻨﻫ ﺔﻳﺎﺠﻟا ةﺮﻤﻟا ﷲ ءﺎﺷ ان ﺖﺼﻠﺧ دي lecture"
+      },
+      "plainText": {
+        "sha256": "9a6ccfd6855eb7c218d6eea2b3383ce392d95e92d4e22194169403e0eeb39c2c",
+        "length": 47524,
+        "head": "Untitled Lecture\nPage 1\tويﺎﺸﻨﻣ ﺪﻤﺣأ .د - Pharmacology\nوﺎﺸﻨﻣ ﺪﻤﺣأ\n1\tال ﻲﻓ ﻲﻓ ﺎﻧﺪﻨﻋ ﺎﻨﺣا ان ﺔﺟﺎﺣ اول ﻲﺗﻻا ﻂﺒﻈﻟﺎﺑ general ال اتﺮﺿﺎﺤﻣ ﻲﻓ ﻪﻴﻠﻋ ﻢﻠﻜﺘﻨﻫ ﻲﻠﻟا ﻪﻳا ﺎﻧا نﺎﺸﻋ\nوال ﻪﻳا ﻲﻨﻌﻳ pharmacokinetics هﺪﻛ مﺎﻤﺗ dynamic ﺎﻬﻤﺳا ﺔﺟﺎﺣو kinetic ﺎﻬﻤﺳا ﺔﺟﺎﺣ general\nﻪﻳا ﻲﻨﻌﻳ pharmacodynamics\n2\tهﺪﺧﺎﺑ ﻻو oral هﺪﻛ هﺪﺧﺎﺑ ﺎﻣ اول واﺪﻟا ﻲﻨﻌﻳ واﺪﻟا ﻲﻓ ﻪﻳا ﻞﻤﻌﻴﺑ ﻢﺴﺠﻟا ﻲﻨﻌﻳ pharmacokinetics ال\nدي هﺪﻛ مﺎﻤﺗ ازاي ﻪﻋزﻮﻴﺑ ازاي ﻪﺼ",
+        "tail": "er weight route of administration time ال ﻪﻳا ﺎﻤﻫ ﻲﻠﻟا dose\nال ةﺪﻛ tolerance وال of administration pathology pharmacogenetics drug interactions\nautonomic ال ﺪﺧﺎﻨﻫ ﺔﻳﺎﺠﻟا ةﺮﻤﻟا ﷲ ءﺎﺷ ان ﺖﺼﻠﺧ دي lecture"
+      }
+    },
+    "error": null
+  },
+  "missingPayload": {
+    "httpStatus": 400,
+    "body": {
+      "success": false,
+      "error": "No PDF data provided"
+    }
+  }
+}
