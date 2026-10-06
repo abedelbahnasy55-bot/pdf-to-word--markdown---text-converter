@@ -1,0 +1,6 @@
+{
+  "name": "PDF to Word, Markdown & Text Converter",
+  "description": "High-fidelity PDF and Image transcription and converter: transcribes and extracts Arabic and English text from PDFs and Images (PNG, JPG, BMP) into Word (.docx), Markdown (.md), and Text (.txt), with a zero-quota direct text extraction mode and unattended sequential batch queue processing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
