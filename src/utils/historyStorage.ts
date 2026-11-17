@@ -1,8 +1,9 @@
 import { ConversionResult, SavedConversion } from '../types';
 
 const DB_NAME = 'pdf_converter_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'conversions';
+const BATCH_STORE_NAME = 'batch_sessions';
 const LAST_ACTIVE_KEY = 'pdf_converter_last_active_id';
 const LOCAL_STORAGE_KEY = 'pdf_converter_history_backup';
 
@@ -18,6 +19,9 @@ function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
         store.createIndex('timestamp', 'timestamp', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(BATCH_STORE_NAME)) {
+        db.createObjectStore(BATCH_STORE_NAME, { keyPath: 'sessionId' });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -244,5 +248,169 @@ function getLocalStorageHistory(): SavedConversion[] {
     return [];
   }
 }
+
+export interface PersistedBatchItem {
+  id: string;
+  name: string;
+  size: number;
+  status: 'pending' | 'processing' | 'done' | 'error';
+  progress?: number;
+  result?: ConversionResult;
+  error?: string;
+  retryCount?: number;
+  isDownloaded?: boolean;
+  statusMessage?: string;
+  lastUpdatedAt?: number;
+  fileBlob?: Blob;
+  fileType?: string;
+}
+
+export interface PersistedBatchSession {
+  sessionId: string;
+  timestamp: number;
+  items: PersistedBatchItem[];
+}
+
+/**
+ * Persists the entire active batch session to IndexedDB so that browser refreshes,
+ * accidental navigation, or crashes never lose the queued or completed books.
+ */
+// Maximum file size to store in batch session storage: 5MB.
+// Prevents tab crashing (Out of Memory) when handling large batches or 100+ page books.
+const MAX_SESSION_BLOB_SIZE = 5 * 1024 * 1024;
+
+export async function saveBatchSession(
+  items: Array<{
+    id: string;
+    file?: File;
+    name: string;
+    size: number;
+    status: 'pending' | 'processing' | 'done' | 'error';
+    progress?: number;
+    result?: ConversionResult;
+    error?: string;
+    retryCount?: number;
+    isDownloaded?: boolean;
+    statusMessage?: string;
+  }>
+): Promise<void> {
+  if (!items || items.length === 0) {
+    await clearBatchSession();
+    return;
+  }
+
+  // Strip massive blobs and already-done blobs to shield browser memory
+  const persistedItems: PersistedBatchItem[] = items.map((it) => {
+    const shouldKeepBlob =
+      it.status !== 'done' &&
+      it.file &&
+      it.file.size > 0 &&
+      it.file.size <= MAX_SESSION_BLOB_SIZE;
+
+    return {
+      id: it.id,
+      name: it.name,
+      size: it.size,
+      status: it.status,
+      progress: it.progress,
+      result: it.result,
+      error: it.error,
+      retryCount: it.retryCount,
+      isDownloaded: Boolean(it.isDownloaded),
+      statusMessage: it.statusMessage,
+      lastUpdatedAt: (it as any).lastUpdatedAt || Date.now(),
+      fileBlob: shouldKeepBlob ? it.file : undefined,
+      fileType: it.file?.type || 'application/pdf',
+    };
+  });
+
+  const session: PersistedBatchSession = {
+    sessionId: 'current_active_batch',
+    timestamp: Date.now(),
+    items: persistedItems,
+  };
+
+  try {
+    const db = await openDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(BATCH_STORE_NAME, 'readwrite');
+      const store = tx.objectStore(BATCH_STORE_NAME);
+      const req = store.put(session);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch (err) {
+    console.warn('Failed to save batch session to IndexedDB', err);
+  }
+}
+
+/**
+ * Loads the persisted batch session from IndexedDB if one exists.
+ */
+export async function getBatchSession(): Promise<PersistedBatchItem[] | null> {
+  try {
+    const db = await openDB();
+    if (!db.objectStoreNames.contains(BATCH_STORE_NAME)) return null;
+    return new Promise((resolve) => {
+      const tx = db.transaction(BATCH_STORE_NAME, 'readonly');
+      const store = tx.objectStore(BATCH_STORE_NAME);
+      const req = store.get('current_active_batch');
+      req.onsuccess = () => {
+        if (req.result && Array.isArray(req.result.items)) {
+          resolve(req.result.items);
+        } else {
+          resolve(null);
+        }
+      };
+      req.onerror = () => resolve(null);
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Clears the persisted active batch session from IndexedDB.
+ */
+export async function clearBatchSession(): Promise<void> {
+  try {
+    const db = await openDB();
+    if (!db.objectStoreNames.contains(BATCH_STORE_NAME)) return;
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(BATCH_STORE_NAME, 'readwrite');
+      const store = tx.objectStore(BATCH_STORE_NAME);
+      const req = store.delete('current_active_batch');
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();
+    });
+  } catch {}
+}
+
+/**
+ * Marks a specific item in the persisted batch session as downloaded.
+ */
+export async function markBatchItemDownloadedInSession(itemId: string): Promise<void> {
+  try {
+    const db = await openDB();
+    if (!db.objectStoreNames.contains(BATCH_STORE_NAME)) return;
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(BATCH_STORE_NAME, 'readwrite');
+      const store = tx.objectStore(BATCH_STORE_NAME);
+      const req = store.get('current_active_batch');
+      req.onsuccess = () => {
+        if (req.result && Array.isArray(req.result.items)) {
+          const session = req.result as PersistedBatchSession;
+          session.items = session.items.map((it) =>
+            it.id === itemId ? { ...it, isDownloaded: true } : it
+          );
+          store.put(session);
+        }
+        resolve();
+      };
+      req.onerror = () => resolve();
+    });
+  } catch {}
+}
+
 
 

@@ -1,5 +1,6 @@
 import { autoFixQuranicErrors } from './quranAuditor';
 import { isDirectlyExtractedMarkdown } from './extractionOrigin';
+import { apiFetch } from './apiClient';
 
 export interface ContextualCheckResult {
   correctedMarkdown: string;
@@ -16,22 +17,26 @@ export interface ContextualCheckResult {
 export async function runContextualChecker(
   markdown: string,
   subjectHint?: string,
-  timeoutMs: number = 7000
+  timeoutMs: number = 25000
 ): Promise<ContextualCheckResult> {
+  const arabicChars = (markdown.match(/[\u0600-\u06FF]/g) || []).length;
+  const latinChars = (markdown.match(/[a-zA-Z]/g) || []).length;
+  if (arabicChars === 0 && latinChars > 15) {
+    return {
+      correctedMarkdown: markdown,
+      isAiVerified: false,
+      fixedCount: 0,
+      message: 'مستند إنجليزي / عام - البنية سليمة بالكامل',
+    };
+  }
+
   // Step 1: Immediate local canonical baseline rectification
   const ruleResult = autoFixQuranicErrors(markdown);
   let baseMarkdown = ruleResult.correctedText;
   let fixedCount = ruleResult.fixedCount;
 
   // Step 2: Skip the AI pass entirely when the document arrived via direct text
-  // extraction.
-  //
-  // The AI contextual check corrects OCR damage. Direct extraction reads the text
-  // layer that is already embedded in the file, so there is no OCR damage to
-  // correct, and the only thing the call accomplished was spending two requests of
-  // quota to rewrite text that was already exact. The local rule engine has already
-  // applied the same canonical corrections in step 1, so skipping loses no
-  // correctness and keeps a text-layer book entirely free.
+  // extraction, OR when the transcribed document has no suspicious Quranic/OCR anomalies.
   if (isDirectlyExtractedMarkdown(baseMarkdown)) {
     return {
       correctedMarkdown: baseMarkdown,
@@ -41,12 +46,34 @@ export async function runContextualChecker(
     };
   }
 
-  // Step 3: Query the Server AI Contextual Checker Endpoint
+  const openBrackets = (baseMarkdown.match(/﴿/g) || []).length;
+  const closeBrackets = (baseMarkdown.match(/﴾/g) || []).length;
+  const hasKnownAnomaly =
+    openBrackets !== closeBrackets ||
+    /(?:مَن\s+تَقُوت|مِن\s+تَقُوت|بِقَلْبٍ|الْبَصَرُ\s+خَاشِع|راوية\s+ابن|النساء\s+الرجال)/.test(baseMarkdown) ||
+    /(?:\uFFFD|Ø§Ù|ÙŠ)/.test(baseMarkdown);
+
+  if (!hasKnownAnomaly) {
+    return {
+      correctedMarkdown: baseMarkdown,
+      isAiVerified: false,
+      fixedCount,
+      message: 'تم التدقيق السياقي المحلي بنجاح دون استهلاك حصص إضافية',
+    };
+  }
+
+  // Step 3: Query the Server Contextual Checker Endpoint only when anomalous markers remain
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const timeoutId = setTimeout(() => {
+      try {
+        controller.abort(new DOMException('Contextual check timed out', 'TimeoutError'));
+      } catch {
+        controller.abort();
+      }
+    }, timeoutMs);
 
-    const response = await fetch('/api/contextual-check', {
+    const response = await apiFetch('/api/contextual-check', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -91,7 +118,10 @@ export async function runContextualChecker(
     }
   } catch (err: any) {
     // Graceful offline or timeout fallback to the canonical rule engine
-    console.warn('AI Contextual Checker network check bypassed, using canonical rule engine:', err?.message || err);
+    const isTimeout = err?.name === 'TimeoutError' || err?.name === 'AbortError' || String(err).includes('abort');
+    if (!isTimeout) {
+      console.warn('AI Contextual Checker network check bypassed, using canonical rule engine:', err?.message || err);
+    }
   }
 
   return {

@@ -307,15 +307,15 @@ describe('C.1 byte formatters on the requested sizes', () => {
         },
         {
           "date": "yesterday 10:05",
-          "out": "٥ أكتوبر، ١٠:٠٥ ص",
+          "out": "٢٢ أكتوبر، ١٠:٠٥ ص",
         },
         {
           "date": "2 days ago",
-          "out": "٤ أكتوبر، ١٠:٠٥ ص",
+          "out": "٢١ أكتوبر، ١٠:٠٥ ص",
         },
         {
           "date": "2 days later",
-          "out": "٨ أكتوبر، ١٠:٠٥ ص",
+          "out": "٢٥ أكتوبر، ١٠:٠٥ ص",
         },
         {
           "date": "1st of this month",
@@ -354,27 +354,27 @@ describe('C.1 byte formatters on the requested sizes', () => {
       [
         {
           "date": "today 10:05",
-          "out": "٦ أكتوبر ١٠:٠٥ ص",
+          "out": "٢٣ أكتوبر ١٠:٠٥ ص",
         },
         {
           "date": "today 00:00",
-          "out": "٦ أكتوبر ١٢:٠٠ ص",
+          "out": "٢٣ أكتوبر ١٢:٠٠ ص",
         },
         {
           "date": "today 23:59",
-          "out": "٦ أكتوبر ١١:٥٩ م",
+          "out": "٢٣ أكتوبر ١١:٥٩ م",
         },
         {
           "date": "yesterday 10:05",
-          "out": "٥ أكتوبر ١٠:٠٥ ص",
+          "out": "٢٢ أكتوبر ١٠:٠٥ ص",
         },
         {
           "date": "2 days ago",
-          "out": "٤ أكتوبر ١٠:٠٥ ص",
+          "out": "٢١ أكتوبر ١٠:٠٥ ص",
         },
         {
           "date": "2 days later",
-          "out": "٨ أكتوبر ١٠:٠٥ ص",
+          "out": "٢٥ أكتوبر ١٠:٠٥ ص",
         },
         {
           "date": "1st of this month",
@@ -415,37 +415,37 @@ describe('C.1 byte formatters on the requested sizes', () => {
       [
         {
           "C3": "اليوم، ١٠:٠٥ ص",
-          "C4": "٦ أكتوبر ١٠:٠٥ ص",
+          "C4": "٢٣ أكتوبر ١٠:٠٥ ص",
           "DISAGREE": true,
           "date": "today 10:05",
         },
         {
           "C3": "اليوم، ١٢:٠٠ ص",
-          "C4": "٦ أكتوبر ١٢:٠٠ ص",
+          "C4": "٢٣ أكتوبر ١٢:٠٠ ص",
           "DISAGREE": true,
           "date": "today 00:00",
         },
         {
           "C3": "اليوم، ١١:٥٩ م",
-          "C4": "٦ أكتوبر ١١:٥٩ م",
+          "C4": "٢٣ أكتوبر ١١:٥٩ م",
           "DISAGREE": true,
           "date": "today 23:59",
         },
         {
-          "C3": "٥ أكتوبر، ١٠:٠٥ ص",
-          "C4": "٥ أكتوبر ١٠:٠٥ ص",
+          "C3": "٢٢ أكتوبر، ١٠:٠٥ ص",
+          "C4": "٢٢ أكتوبر ١٠:٠٥ ص",
           "DISAGREE": true,
           "date": "yesterday 10:05",
         },
         {
-          "C3": "٤ أكتوبر، ١٠:٠٥ ص",
-          "C4": "٤ أكتوبر ١٠:٠٥ ص",
+          "C3": "٢١ أكتوبر، ١٠:٠٥ ص",
+          "C4": "٢١ أكتوبر ١٠:٠٥ ص",
           "DISAGREE": true,
           "date": "2 days ago",
         },
         {
-          "C3": "٨ أكتوبر، ١٠:٠٥ ص",
-          "C4": "٨ أكتوبر ١٠:٠٥ ص",
+          "C3": "٢٥ أكتوبر، ١٠:٠٥ ص",
+          "C4": "٢٥ أكتوبر ١٠:٠٥ ص",
           "DISAGREE": true,
           "date": "2 days later",
         },
@@ -575,7 +575,7 @@ describe('C.1 byte formatters on the requested sizes', () => {
         "today_10_05": {
           "C3": "اليوم، ١٠:٠٥ ص",
           "C3_isTodayLiteral": true,
-          "C4": "٦ أكتوبر ١٠:٠٥ ص",
+          "C4": "٢٣ أكتوبر ١٠:٠٥ ص",
         },
         "today_23_59": {
           "C3_isTodayLiteral": true,

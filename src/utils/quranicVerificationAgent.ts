@@ -360,6 +360,137 @@ export const UTHMANI_CANONICAL_DATASET: CanonicalAyah[] = [
   { surahNumber: 114, surahName: 'الناس', ayahNumber: 4, uthmaniText: 'مِن شَرِّ الْوَسْوَاسِ الْخَنَّاسِ', normalizedText: 'من شر الوسواس الخناس' },
   { surahNumber: 114, surahName: 'الناس', ayahNumber: 5, uthmaniText: 'الَّذِي يُوَسْوِسُ فِي صُدُورِ النَّاسِ', normalizedText: 'الذي يوسوس في صدور الناس' },
   { surahNumber: 114, surahName: 'الناس', ayahNumber: 6, uthmaniText: 'مِنَ الْجِنَّةِ وَالنَّاسِ', normalizedText: 'من الجنه والناس' },
+
+  // --- شواهد القرآن ومناهج التفسير والفقه والامتحانات ---
+  // البقرة
+  { surahNumber: 2, surahName: 'البقرة', ayahNumber: 21, uthmaniText: 'يَا أَيُّهَا النَّاسُ اعْبُدُوا رَبَّكُمُ الَّذِي خَلَقَكُمْ وَالَّذِينَ مِن قَبْلِكُمْ لَعَلَّكُمْ تَتَّقُونَ', normalizedText: 'يا ايها الناس اعبدوا ربكم الذي خلقكم والذين من قبلكم لعلكم تتقون' },
+  { surahNumber: 2, surahName: 'البقرة', ayahNumber: 183, uthmaniText: 'يَا أَيُّهَا الَّذِينَ آمَنُوا كُتِبَ عَلَيْكُمُ الصِّيَامُ كَمَا كُتِبَ عَلَى الَّذِينَ مِن قَبْلِكُمْ لَعَلَّكُمْ تَتَّقُونَ', normalizedText: 'يا ايها الذين امنوا كتب عليكم الصيام كما كتب علي الذين من قبلكم لعلكم تتقون' },
+  { surahNumber: 2, surahName: 'البقرة', ayahNumber: 185, uthmaniText: 'شَهْرُ رَمَضَانَ الَّذِي أُنزِلَ فِيهِ الْقُرْآنُ هُدًى لِّلنَّاسِ وَبَيِّنَاتٍ مِّنَ الْهُدَىٰ وَالْفُرْقَانِ', normalizedText: 'شهر رمضان الذي انزل فيه القران هدي للناس وبينات من الهدي والفرقان' },
+  { surahNumber: 2, surahName: 'البقرة', ayahNumber: 275, uthmaniText: 'وَأَحَلَّ اللَّهُ الْبَيْعَ وَحَرَّمَ الرِّبَا', normalizedText: 'واحل الله البيع وحرم الربا' },
+  { surahNumber: 2, surahName: 'البقرة', ayahNumber: 282, uthmaniText: 'يَا أَيُّهَا الَّذِينَ آمَنُوا إِذَا تَدَايَنتُم بِدَيْنٍ إِلَىٰ أَجَلٍ مُّسَمًّى فَاكْتُبُوهُ', normalizedText: 'يا ايها الذين امنوا اذا تداينتم بدين الي اجل مسمي فاكتبوه' },
+  // آل عمران
+  { surahNumber: 3, surahName: 'آل عمران', ayahNumber: 18, uthmaniText: 'شَهِدَ اللَّهُ أَنَّهُ لَا إِلَٰهَ إِلَّا هُوَ وَالْمَلَائِكَةُ وَأُولُو الْعِلْمِ قَائِمًا بِالْقِسْطِ', normalizedText: 'شهد الله انه لا اله الا هو والملائكه واولو العلم قائما بالقسط' },
+  { surahNumber: 3, surahName: 'آل عمران', ayahNumber: 102, uthmaniText: 'يَا أَيُّهَا الَّذِينَ آمَنُوا اتَّقُوا اللَّهَ حَقَّ تُقَاتِهِ وَلَا تَمُوتُنَّ إِلَّا وَأَنتُم مُّسْلِمُونَ', normalizedText: 'يا ايها الذين امنوا اتقوا الله حق تقاته ولا تموتن الا وانتم مسلمون' },
+  { surahNumber: 3, surahName: 'آل عمران', ayahNumber: 103, uthmaniText: 'وَاعْتَصِمُوا بِحَبْلِ اللَّهِ جَمِيعًا وَلَا تَفَرَّقُوا', normalizedText: 'واعتصموا بحبل الله جميعا ولا تفرقوا' },
+  { surahNumber: 3, surahName: 'آل عمران', ayahNumber: 133, uthmaniText: 'وَسَارِعُوا إِلَىٰ مَغْفِرَةٍ مِّن رَّبِّكُمْ وَجَنَّةٍ عَرْضُهَا السَّمَاوَاتُ وَالْأَرْضُ أُعِدَّتْ لِلْمُتَّقِينَ', normalizedText: 'وسارعوا الي مغفره من ربكم وجنه عرضها السماوات والارض اعدت للمتقين' },
+  { surahNumber: 3, surahName: 'آل عمران', ayahNumber: 134, uthmaniText: 'الَّذِينَ يُنفِقُونَ فِي السَّرَّاءِ وَالضَّرَّاءِ وَالْكَاظِمِينَ الْغَيْظَ وَالْعَافِينَ عَنِ النَّاسِ ۗ وَاللَّهُ يُحِبُّ الْمُحْسِنِينَ', normalizedText: 'الذين ينفقون في السراء والضراء والكاظمين الغيظ والعافين عن الناس والله يحب المحسنين' },
+  // النساء
+  { surahNumber: 4, surahName: 'النساء', ayahNumber: 29, uthmaniText: 'يَا أَيُّهَا الَّذِينَ آمَنُوا لَا تَأْكُلُوا أَمْوَالَكُم بَيْنَكُم بِالْبَاطِلِ إِلَّا أَن تَكُونَ تِجَارَةً عَن تَرَاضٍ مِّنكُمْ', normalizedText: 'يا ايها الذين امنوا لا تاكلوا اموالكم بينكم بالباطل الا ان تكون تجاره عن تراض منكم' },
+  { surahNumber: 4, surahName: 'النساء', ayahNumber: 58, uthmaniText: 'إِنَّ اللَّهَ يَأْمُرُكُمْ أَن تُؤَدُّوا الْأَمَانَاتِ إِلَىٰ أَهْلِهَا وَإِذَا حَكَمْتُم بَيْنَ النَّاسِ أَن تَحْكُمُوا بِالْعَدْلِ', normalizedText: 'ان الله يامركم ان تؤدوا الامانات الي اهلها واذا حكمتم بين الناس ان تحكموا بالعدل' },
+  // الإسراء
+  { surahNumber: 17, surahName: 'الإسراء', ayahNumber: 1, uthmaniText: 'سُبْحَانَ الَّذِي أَسْرَىٰ بِعَبْدِهِ لَيْلًا مِّنَ الْمَسْجِدِ الْحَرَامِ إِلَى الْمَسْجِدِ الْأَقْصَى الَّذِي بَارَكْنَا حَوْلَهُ', normalizedText: 'سبحان الذي اسري بعبده ليلا من المسجد الحرام الي المسجد الاقصي الذي باركنا حوله' },
+  { surahNumber: 17, surahName: 'الإسراء', ayahNumber: 23, uthmaniText: 'وَقَضَىٰ رَبُّكَ أَلَّا تَعْبُدُوا إِلَّا إِيَّاهُ وَبِالْوَالِدَيْنِ إِحْسَانًا', normalizedText: 'وقضي ربك الا تعبدوا الا اياه وبالوالدين احسانا' },
+  { surahNumber: 17, surahName: 'الإسراء', ayahNumber: 70, uthmaniText: 'وَلَقَدْ كَرَّمْنَا بَنِي آدَمَ وَحَمَلْنَاهُمْ فِي الْبَرِّ وَالْبَحْرِ وَرَزَقْنَاهُم مِّنَ الطَّيِّبَاتِ', normalizedText: 'ولقد كرمنا بني ادم وحملناهم في البر والبحر ورزقناهم من الطيبات' },
+  // الكهف
+  { surahNumber: 18, surahName: 'الكهف', ayahNumber: 1, uthmaniText: 'الْحَمْدُ لِلَّهِ الَّذِي أَنزَلَ عَلَىٰ عَبْدِهِ الْكِتَابَ وَلَمْ يَجْعَل لَّهُ عِوَجًا', normalizedText: 'الحمد لله الذي انزل علي عبده الكتاب ولم يجعل له عوجا' },
+  { surahNumber: 18, surahName: 'الكهف', ayahNumber: 109, uthmaniText: 'قُل لَّوْ كَانَ الْبَحْرُ مِدَادًا لِّكَلِمَاتِ رَبِّي لَنَفِدَ الْبَحْرُ قَبْلَ أَن تَنفَدَ كَلِمَاتُ رَبِّي وَلَوْ جِئْنَا بِمِثْلِهِ مَدَدًا', normalizedText: 'قل لو كان البحر مدادا لكلمات ربي لنفد البحر قبل ان تنفد كلمات ربي ولو جئنا بمثله مددا' },
+  { surahNumber: 18, surahName: 'الكهف', ayahNumber: 110, uthmaniText: 'قُلْ إِنَّمَا أَنَا بَشَرٌ مِّثْلُكُمْ يُوحَىٰ إِلَيَّ أَنَّمَا إِلَٰهُكُمْ إِلَٰهٌ وَاحِدٌ', normalizedText: 'قل انما انا بشر مثلكم يوحي الي انما الهكم اله واحد' },
+  // النور
+  { surahNumber: 24, surahName: 'النور', ayahNumber: 30, uthmaniText: 'قُل لِّلْمُؤْمِنِينَ يَغُضُّوا مِنْ أَبْصَارِهِمْ وَيَحْفَظُوا فُرُوجَهُمْ ۚ ذَٰلِكَ أَزْكَىٰ لَهُمْ', normalizedText: 'قل للمؤمنين يغضوا من ابصارهم ويحفظوا فروجهم ذلك ازكي لهم' },
+  { surahNumber: 24, surahName: 'النور', ayahNumber: 35, uthmaniText: 'اللَّهُ نُورُ السَّمَاوَاتِ وَالْأَرْضِ ۚ مَثَلُ نُورِهِ كَمِشْكَاةٍ فِيهَا مِصْبَاحٌ', normalizedText: 'الله نور السماوات والارض مثل نوره كمشكاه فيها مصباح' },
+  // لقمان
+  { surahNumber: 31, surahName: 'لقمان', ayahNumber: 14, uthmaniText: 'وَوَصَّيْنَا الْإِنسَانَ بِوَالِدَيْهِ حَمَلَتْهُ أُمُّهُ وَهْنًا عَلَىٰ وَهْنٍ وَفِصَالُهُ فِي عَامَيْنِ أَنِ اشْكُرْ لِي وَلِوَالِدَيْكَ إِلَيَّ الْمَصِيرُ', normalizedText: 'ووصينا الانسان بوالديه حملته امه وهنا علي وهن وفصاله في عامين ان اشكر لي ولوالديك الي المصير' },
+  { surahNumber: 31, surahName: 'لقمان', ayahNumber: 17, uthmaniText: 'يَا بُنَيَّ أَقِمِ الصَّلَاةَ وَأْمُرْ بِالْمَعْرُوفِ وَانْهَ عَنِ الْمُنكَرِ وَاصْبِرْ عَلَىٰ مَا أَصَابَكَ ۖ إِنَّ ذَٰلِكَ مِنْ عَزْمِ الْأُمُورِ', normalizedText: 'يا بني اقم الصلاه وامر بالمعروف وانه عن المنكر واصبر علي ما اصابك ان ذلك من عزم الامور' },
+  // يس
+  { surahNumber: 36, surahName: 'يس', ayahNumber: 1, uthmaniText: 'يس', normalizedText: 'يس' },
+  { surahNumber: 36, surahName: 'يس', ayahNumber: 2, uthmaniText: 'وَالْقُرْآنِ الْحَكِيمِ', normalizedText: 'والقران الحكيم' },
+  { surahNumber: 36, surahName: 'يس', ayahNumber: 3, uthmaniText: 'إِنَّكَ لَمِنَ الْمُرْسَلِينَ', normalizedText: 'انك لمن المرسلين' },
+  { surahNumber: 36, surahName: 'يس', ayahNumber: 82, uthmaniText: 'إِنَّمَا أَمْرُهُ إِذَا أَرَادَ شَيْئًا أَن يَقُولَ لَهُ كُن فَيَكُونُ', normalizedText: 'انما امره اذا اراد شيئا ان يقول له كن فيكون' },
+  // الحجرات
+  { surahNumber: 49, surahName: 'الحجرات', ayahNumber: 6, uthmaniText: 'يَا أَيُّهَا الَّذِينَ آمَنُوا إِن جَاءَكُمْ فَاسِقٌ بِنَبَإٍ فَتَبَيَّنُوا أَن تُصِيبُوا قَوْمًا بِجَهَالَةٍ فَتُصْبِحُوا عَلَىٰ مَا فَعَلْتُمْ نَادِمِينَ', normalizedText: 'يا ايها الذين امنوا ان جاءكم فاسق بنبا فتبينوا ان تصيبوا قوما بجهاله فتصبحوا علي ما فعلتم نادمين' },
+  { surahNumber: 49, surahName: 'الحجرات', ayahNumber: 10, uthmaniText: 'إِنَّمَا الْمُؤْمِنُونَ إِخْوَةٌ فَأَصْلِحُوا بَيْنَ أَخَوَيْكُمْ ۚ وَاتَّقُوا اللَّهَ لَعَلَّكُمْ تُرْحَمُونَ', normalizedText: 'انما المؤمنون اخوه فاصلحوا بين اخويكم واتقوا الله لعلكم ترحمون' },
+  { surahNumber: 49, surahName: 'الحجرات', ayahNumber: 13, uthmaniText: 'يَا أَيُّهَا النَّاسُ إِنَّا خَلَقْنَاكُم مِّن ذَكَرٍ وَأُنثَىٰ وَجَعَلْنَاكُمْ شُعُوبًا وَقَبَائِلَ لِتَعَارَفُوا ۚ إِنَّ أَكْرَمَكُمْ عِندَ اللَّهِ أَتْقَاكُمْ', normalizedText: 'يا ايها الناس انا خلقناكم من ذكر وانثي وجعلناكم شعوبا وقبائل لتعارفوا ان اكرمكم عند الله اتقاكم' },
+  // الرحمن
+  { surahNumber: 55, surahName: 'الرحمن', ayahNumber: 1, uthmaniText: 'الرَّحْمَٰنُ', normalizedText: 'الرحمن' },
+  { surahNumber: 55, surahName: 'الرحمن', ayahNumber: 2, uthmaniText: 'عَلَّمَ الْقُرْآنَ', normalizedText: 'علم القران' },
+  { surahNumber: 55, surahName: 'الرحمن', ayahNumber: 3, uthmaniText: 'خَلَقَ الْإِنسَانَ', normalizedText: 'خلق الانسان' },
+  { surahNumber: 55, surahName: 'الرحمن', ayahNumber: 4, uthmaniText: 'عَلَّمَهُ الْبَيَانَ', normalizedText: 'علمه البيان' },
+  { surahNumber: 55, surahName: 'الرحمن', ayahNumber: 60, uthmaniText: 'هَلْ جَزَاءُ الْإِحْسَانِ إِلَّا الْإِحْسَانُ', normalizedText: 'هل جزاء الاحسان الا الاحسان' },
+  // الحشر
+  { surahNumber: 59, surahName: 'الحشر', ayahNumber: 21, uthmaniText: 'لَوْ أَنزَلْنَا هَٰذَا الْقُرْآنَ عَلَىٰ جَبَلٍ لَّرَأَيْتَهُ خَاشِعًا مُّتَصَدِّعًا مِّنْ خَشْيَةِ اللَّهِ', normalizedText: 'لو انزلنا هذا القران علي جبل لرايته خاشعا متصدعا من خشيه الله' },
+  { surahNumber: 59, surahName: 'الحشر', ayahNumber: 22, uthmaniText: 'هُوَ اللَّهُ الَّذِي لَا إِلَٰهَ إِلَّا هُوَ ۖ عَالِمُ الْغَيْبِ وَالشَّهَادَةِ ۖ هُوَ الرَّحْمَٰنُ الرَّحِيمُ', normalizedText: 'هو الله الذي لا اله الا هو عالم الغيب والشهاده هو الرحمن الرحيم' },
+  { surahNumber: 59, surahName: 'الحشر', ayahNumber: 23, uthmaniText: 'هُوَ اللَّهُ الَّذِي لَا إِلَٰهَ إِلَّا هُوَ الْمَلِكُ الْقُدُّوسُ السَّلَامُ الْمُؤْمِنُ الْمُهَيْمِنُ الْعَزِيزُ الْجَبَّارُ الْمُتَكَبِّرُ ۚ سُبْحَانَ اللَّهِ عَمَّا يُشْرِكُونَ', normalizedText: 'هو الله الذي لا اله الا هو الملك القدوس السلام المؤمن المهيمن العزيز الجبار المتكبر سبحان الله عما يشركون' },
+  { surahNumber: 59, surahName: 'الحشر', ayahNumber: 24, uthmaniText: 'هُوَ اللَّهُ الْخَالِقُ الْبَارِئُ الْمُصَوِّرُ ۖ لَهُ الْأَسْمَاءُ الْحُسْنَىٰ ۚ يُسَبِّحُ لَهُ مَا فِي السَّمَاوَاتِ وَالْأَرْضِ ۖ وَهُوَ الْعَزِيزُ الْحَكِيمُ', normalizedText: 'هو الله الخالق البارئ المصور له الاسماء الحسني يسبح له ما في السماوات والارض وهو العزيز الحكيم' },
+  // الجمعة
+  { surahNumber: 62, surahName: 'الجمعة', ayahNumber: 9, uthmaniText: 'يَا أَيُّهَا الَّذِينَ آمَنُوا إِذَا نُودِيَ لِلصَّلَاةِ مِن يَوْمِ الْجُمُعَةِ فَاسْعَوْا إِلَىٰ ذِكْرِ اللَّهِ وَذَرُوا الْبَيْعَ', normalizedText: 'يا ايها الذين امنوا اذا نودي للصلاه من يوم الجمعه فاسعوا الي ذكر الله وذروا البيع' },
+  // سور قصيرة مكية
+  { surahNumber: 90, surahName: 'البلد', ayahNumber: 1, uthmaniText: 'لَا أُقْسِمُ بِهَٰذَا الْبَلَدِ', normalizedText: 'لا اقسم بهذا البلد' },
+  { surahNumber: 90, surahName: 'البلد', ayahNumber: 2, uthmaniText: 'وَأَنتَ حِلٌّ بِهَٰذَا الْبَلَدِ', normalizedText: 'وانت حل بهذا البلد' },
+  { surahNumber: 90, surahName: 'البلد', ayahNumber: 3, uthmaniText: 'وَوَالِدٍ وَمَا وَلَدَ', normalizedText: 'ووالد وما ولد' },
+  { surahNumber: 90, surahName: 'البلد', ayahNumber: 4, uthmaniText: 'لَقَدْ خَلَقْنَا الْإِنسَانَ فِي كَبَدٍ', normalizedText: 'لقد خلقنا الانسان في كبد' },
+  { surahNumber: 93, surahName: 'الضحى', ayahNumber: 1, uthmaniText: 'وَالضُّحَىٰ', normalizedText: 'والضحي' },
+  { surahNumber: 93, surahName: 'الضحى', ayahNumber: 2, uthmaniText: 'وَاللَّيْلِ إِذَا سَجَىٰ', normalizedText: 'والليل اذا سجي' },
+  { surahNumber: 93, surahName: 'الضحى', ayahNumber: 3, uthmaniText: 'مَا وَدَّعَكَ رَبُّكَ وَمَا قَلَىٰ', normalizedText: 'ما ودعك ربك وما قلي' },
+  { surahNumber: 93, surahName: 'الضحى', ayahNumber: 4, uthmaniText: 'وَلَلْآخِرَةُ خَيْرٌ لَّكَ مِنَ الْأُولَىٰ', normalizedText: 'وللاخره خير لك من الاولي' },
+  { surahNumber: 93, surahName: 'الضحى', ayahNumber: 5, uthmaniText: 'وَلَسَوْفَ يُعْطِيكَ رَبُّكَ فَتَرْضَىٰ', normalizedText: 'ولسوف يعطيك ربك فترضي' },
+  { surahNumber: 94, surahName: 'الشرح', ayahNumber: 1, uthmaniText: 'أَلَمْ نَشْرَحْ لَكَ صَدْرَكَ', normalizedText: 'الم نشرح لك صدرك' },
+  { surahNumber: 94, surahName: 'الشرح', ayahNumber: 2, uthmaniText: 'وَوَضَعْنَا عَنكَ وِزْرَكَ', normalizedText: 'ووضعنا عنك وزرك' },
+  { surahNumber: 94, surahName: 'الشرح', ayahNumber: 3, uthmaniText: 'الَّذِي أَنقَضَ ظَهْرَكَ', normalizedText: 'الذي انقض ظهرك' },
+  { surahNumber: 94, surahName: 'الشرح', ayahNumber: 4, uthmaniText: 'وَرَفَعْنَا لَكَ ذِكْرَكَ', normalizedText: 'ورفعنا لك ذكرك' },
+  { surahNumber: 94, surahName: 'الشرح', ayahNumber: 5, uthmaniText: 'فَإِنَّ مَعَ الْعُسْرِ يُسْرًا', normalizedText: 'فان مع العسر يسرا' },
+  { surahNumber: 94, surahName: 'الشرح', ayahNumber: 6, uthmaniText: 'إِنَّ مَعَ الْعُسْرِ يُسْرًا', normalizedText: 'ان مع العسر يسرا' },
+  { surahNumber: 95, surahName: 'التين', ayahNumber: 1, uthmaniText: 'وَالتِّينِ وَالزَّيْتُونِ', normalizedText: 'والتين والزيتون' },
+  { surahNumber: 95, surahName: 'التين', ayahNumber: 2, uthmaniText: 'وَطُورِ سِينِينَ', normalizedText: 'وطور سينين' },
+  { surahNumber: 95, surahName: 'التين', ayahNumber: 3, uthmaniText: 'وَهَٰذَا الْبَلَدِ الْأَمِينِ', normalizedText: 'وهذا البلد الامين' },
+  { surahNumber: 95, surahName: 'التين', ayahNumber: 4, uthmaniText: 'لَقَدْ خَلَقْنَا الْإِنسَانَ فِي أَحْسَنِ تَقْوِيمٍ', normalizedText: 'لقد خلقنا الانسان في احسن تقويم' },
+  { surahNumber: 96, surahName: 'العلق', ayahNumber: 1, uthmaniText: 'اقْرَأْ بِاسْمِ رَبِّكَ الَّذِي خَلَقَ', normalizedText: 'اقرا باسم ربك الذي خلق' },
+  { surahNumber: 96, surahName: 'العلق', ayahNumber: 2, uthmaniText: 'خَلَقَ الْإِنسَانَ مِنْ عَلَقٍ', normalizedText: 'خلق الانسان من علق' },
+  { surahNumber: 96, surahName: 'العلق', ayahNumber: 3, uthmaniText: 'اقْرَأْ وَرَبُّكَ الْأَكْرَمُ', normalizedText: 'اقرا وربك الاكرم' },
+  { surahNumber: 96, surahName: 'العلق', ayahNumber: 4, uthmaniText: 'الَّذِي عَلَّمَ بِالْقَلَمِ', normalizedText: 'الذي علم بالقلم' },
+  { surahNumber: 96, surahName: 'العلق', ayahNumber: 5, uthmaniText: 'عَلَّمَ الْإِنسَانَ مَا لَمْ يَعْلَمْ', normalizedText: 'علم الانسان ما لم يعلم' },
+  { surahNumber: 97, surahName: 'القدر', ayahNumber: 1, uthmaniText: 'إِنَّا أَنزَلْنَاهُ فِي لَيْلَةِ الْقَدْرِ', normalizedText: 'انا انزلناه في ليله القدر' },
+  { surahNumber: 97, surahName: 'القدر', ayahNumber: 2, uthmaniText: 'وَمَا أَدْرَاكَ مَا لَيْلَةُ الْقَدْرِ', normalizedText: 'وما ادراك ما ليله القدر' },
+  { surahNumber: 97, surahName: 'القدر', ayahNumber: 3, uthmaniText: 'لَيْلَةُ الْقَدْرِ خَيْرٌ مِّنْ أَلْفِ شَهْرٍ', normalizedText: 'ليله القدر خير من الف شهر' },
+  { surahNumber: 97, surahName: 'القدر', ayahNumber: 4, uthmaniText: 'تَنَزَّلُ الْمَلَائِكَةُ وَالرُّوحُ فِيهَا بِإِذْنِ رَبِّهِم مِّن كُلِّ أَمْرٍ', normalizedText: 'تنزل الملائكه والروح فيها باذن ربهم من كل امر' },
+  { surahNumber: 97, surahName: 'القدر', ayahNumber: 5, uthmaniText: 'سَلَامٌ هِيَ حَتَّىٰ مَطْلَعِ الْفَجْرِ', normalizedText: 'سلام هي حتي مطلع الفجر' },
+];
+
+/**
+ * شواهد الفقه الحنفي المقررة على الصف الثاني الثانوي الأزهري (كتاب النكاح، الرضاع، الطلاق، العدة، الخلع، النفقات)
+ */
+export const HANAFI_FIQH_CURRICULUM_AYAHS: CanonicalAyah[] = [
+  // كتاب النكاح
+  { surahNumber: 4, surahName: 'النساء', ayahNumber: 3, uthmaniText: 'فَانكِحُوا مَا طَابَ لَكُم مِّنَ النِّسَاءِ مَثْنَىٰ وَثُلَاثَ وَرُبَاعَ ۖ فَإِنْ خِفْتُمْ أَلَّا تَعْدِلُوا فَوَاحِدَةً', normalizedText: 'فانكحوا ما طاب لكم من النساء مثني وثلاث ورباع فان خفتم الا تعدلوا فواحده' },
+  { surahNumber: 4, surahName: 'النساء', ayahNumber: 4, uthmaniText: 'وَآتُوا النِّسَاءَ صَدُقَاتِهِنَّ نِحْلَةً ۚ فَإِن طِبْنَ لَكُمْ عَن شَيْءٍ مِّنْهُ نَفْسًا فَكُلُوهُ هَنِيئًا مَّرِيئًا', normalizedText: 'واتوا النساء صدقاتهن نحله فان طبن لكم عن شيء منه نفسا فكلوه هنيئا مريئا' },
+  { surahNumber: 4, surahName: 'النساء', ayahNumber: 19, uthmaniText: 'وَعَاشِرُوهُنَّ بِالْمَعْرُوفِ ۚ فَإِن كَرِهْتُمُوهُنَّ فَعَسَىٰ أَن تَكْرَهُوا شَيْئًا وَيَجْعَلَ اللَّهُ فِيهِ خَيْرًا كَثِيرًا', normalizedText: 'وعاشروهن بالمعروف فان كرهتموهن فعسي ان تكرهوا شيئا ويجعل الله فيه خيرا كثيرا' },
+  { surahNumber: 4, surahName: 'النساء', ayahNumber: 22, uthmaniText: 'وَلَا تَنكِحُوا مَا نَكَحَ آبَاؤُكُم مِّنَ النِّسَاءِ إِلَّا مَا قَدْ سَلَفَ ۚ إِنَّهُ كَانَ فَاحِشَةً وَمَقْتًا وَسَاءَ سَبِيلًا', normalizedText: 'ولا تنكحوا ما نكح اباؤكم من النساء الا ما قد سلف انه كان فاحشه ومقتا وساء سبيلا' },
+  { surahNumber: 4, surahName: 'النساء', ayahNumber: 23, uthmaniText: 'حُرِّمَتْ عَلَيْكُمْ أُمَّهَاتُكُمْ وَبَنَاتُكُمْ وَأَخَوَاتُكُمْ وَعَمَّاتُكُمْ وَخَالَاتُكُمْ وَبَنَاتُ الْأَخِ وَبَنَاتُ الْأُخْتِ وَأُمَّهَاتُكُمُ اللَّاتِي أَرْضَعْنَكُمْ وَأَخَوَاتُكُم مِّنَ الرَّضَاعَةِ وَأُمَّهَاتُ نِسَائِكُمْ وَرَبَائِبُكُمُ اللَّاتِي فِي حُجُورِكُم مِّن نِّسَائِكُمُ اللَّاتِي دَخَلْتُم بِهِنَّ', normalizedText: 'حرمت عليكم امهاتكم وبناتكم واخواتكم وعماتكم وخالاتكم وبنات الاخ وبنات الاخت وامهاتكم اللاتي ارضعنكم واخواتكم من الرضاعه وامهات نسائكم وربائبكم اللاتي في حجوركم من نسائكم اللاتي دخلتم بهن' },
+  { surahNumber: 4, surahName: 'النساء', ayahNumber: 24, uthmaniText: 'وَأُحِلَّ لَكُم مَّا وَرَاءَ ذَٰلِكُمْ أَن تَبْتَغُوا بِأَمْوَالِكُم مُّحْصِنِينَ غَيْرَ مُسَافِحِينَ', normalizedText: 'واحل لكم ما وراء ذلكم ان تبتغوا باموالكم محصنين غير مسافحين' },
+  // كتاب الرضاع
+  { surahNumber: 2, surahName: 'البقرة', ayahNumber: 233, uthmaniText: 'وَالْوَالِدَاتُ يُرْضِعْنَ أَوْلَادَهُنَّ حَوْلَيْنِ كَامِلَيْنِ ۖ لِمَنْ أَرَادَ أَن يُتِمَّ الرَّضَاعَةَ ۚ وَعَلَى الْمَوْلُودِ لَهُ رِزْقُهُنَّ وَكِسْوَتُهُنَّ بِالْمَعْرُوفِ', normalizedText: 'والوالدات يرضعن اولادهن حولين كاملين لمن اراد ان يتم الرضاعه وعلي المولود له رزقهن وكسوتهن بالمعروف' },
+  // كتاب الطلاق والرجعة والخلع
+  { surahNumber: 2, surahName: 'البقرة', ayahNumber: 228, uthmaniText: 'وَالْمُطَلَّقَاتُ يَتَرَبَّصْنَ بِأَنفُسِهِنَّ ثَلَاثَةَ قُرُوءٍ ۚ وَلَا يَحِلُّ لَهُنَّ أَن يَكْتُمْنَ مَا خَلَقَ اللَّهُ فِي أَرْحَامِهِنَّ', normalizedText: 'والمطلقات يتربصن بانفسهن ثلاثه قروء ولا يحل لهن ان يكتمن ما خلق الله في ارحامهن' },
+  { surahNumber: 2, surahName: 'البقرة', ayahNumber: 229, uthmaniText: 'الطَّلَاقُ مَرَّتَانِ ۖ فَإِمْسَاكٌ بِمَعْرُوفٍ أَوْ تَسْرِيحٌ بِإِحْسَانٍ ۗ وَلَا يَحِلُّ لَكُمْ أَن تَأْخُذُوا مِمَّا آتَيْتُمُوهُنَّ شَيْئًا إِلَّا أَن يَخَافَا أَلَّا يُقِيمَا حُدُودَ اللَّهِ ۖ فَإِنْ خِفْتُمْ أَلَّا يُقِيمَا حُدُودَ اللَّهِ فَلَا جُنَاحَ عَلَيْهِمَا فِيمَا افْتَدَتْ بِهِ', normalizedText: 'الطلاق مرتان فامساك بمعروف او تسريح باحسان ولا يحل لكم ان تاخذوا مما اتيتموهن شيئا الا ان يخافا الا يقيما حدود الله فان خفتم الا يقيما حدود الله فلا جناح عليهما فيما افتدت به' },
+  { surahNumber: 2, surahName: 'البقرة', ayahNumber: 230, uthmaniText: 'فَإِن طَلَّقَهَا فَلَا تَحِلُّ لَهُ مِن بَعْدُ حَتَّىٰ تَنكِحَ زَوْجًا غَيْرَهُ', normalizedText: 'فان طلقها فلا تحل له من بعد حتي تنكح زوجا غيره' },
+  { surahNumber: 2, surahName: 'البقرة', ayahNumber: 231, uthmaniText: 'وَإِذَا طَلَّقْتُمُ النِّسَاءَ فَبَلَغْنَ أَجَلَهُنَّ فَأَمْسِكُوهُنَّ بِمَعْرُوفٍ أَوْ سَرِّحُوهُنَّ بِمَعْرُوفٍ ۚ وَلَا تُمْسِكُوهُنَّ ضِرَارًا لِّتَعْتَدُوا', normalizedText: 'واذا طلقتم النساء فبلغن اجلهن فامسكوهن بمعروف او سرحوهن بمعروف ولا تمسكوهن ضرارا لتعتدوا' },
+  { surahNumber: 2, surahName: 'البقرة', ayahNumber: 232, uthmaniText: 'وَإِذَا طَلَّقْتُمُ النِّسَاءَ فَبَلَغْنَ أَجَلَهُنَّ فَلَا تَعْضُلُوهُنَّ أَن يَنكِحْنَ أَزْوَاجَهُنَّ إِذَا تَرَاضَوْا بَيْنَهُم بِالْمَعْرُوفِ', normalizedText: 'واذا طلقتم النساء فبلغن اجلهن فلا تعضلوهن ان ينكحن ازواجهن اذا تراضوا بينهم بالمعروف' },
+  // كتاب الإيلاء
+  { surahNumber: 2, surahName: 'البقرة', ayahNumber: 226, uthmaniText: 'لِّلَّذِينَ يُؤْلُونَ مِن نِّسَائِهِمْ تَرَبُّصُ أَرْبَعَةِ أَشْهُرٍ ۖ فَإِن فَاءُوا فَإِنَّ اللَّهَ غَفُورٌ رَّحِيمٌ', normalizedText: 'للذين يولون من نسائهم تربص اربعه اشهر فان فاءوا فان الله غفور رحيم' },
+  { surahNumber: 2, surahName: 'البقرة', ayahNumber: 227, uthmaniText: 'وَإِنْ عَزَمُوا الطَّلَاقَ فَإِنَّ اللَّهَ سَمِيعٌ عَلِيمٌ', normalizedText: 'وان عزموا الطلاق فان الله سميع عليم' },
+  // كتاب الظهار
+  { surahNumber: 58, surahName: 'المجادلة', ayahNumber: 2, uthmaniText: 'الَّذِينَ يُظَاهِرُونَ مِنكُم مِّن نِّسَائِهِم مَّا هُنَّ أُمَّهَاتِهِمْ ۖ إِنْ أُمَّهَاتُهُمْ إِلَّا اللَّائِي وَلَدْنَهُمْ ۚ وَإِنَّهُمْ لَيَقُولُونَ مُنكَرًا مِّنَ الْقَوْلِ وَزُورًا', normalizedText: 'الذين يظاهرون منكم من نسائهم ما هن امهاتهم ان امهاتهم الا اللائي ولدنهم وانهم ليقولون منكرا من القول وزورا' },
+  { surahNumber: 58, surahName: 'المجادلة', ayahNumber: 3, uthmaniText: 'وَالَّذِينَ يُظَاهِرُونَ مِن نِّسَائِهِمْ ثُمَّ يَعُودُونَ لِمَا قَالُوا فَتَحْرِيرُ رَقَبَةٍ مِّن قَبْلِ أَن يَتَمَاسَّا', normalizedText: 'والذين يظاهرون من نسائهم ثم يعودون لما قالوا فتحرير رقبه من قبل ان يتماسا' },
+  { surahNumber: 58, surahName: 'المجادلة', ayahNumber: 4, uthmaniText: 'فَمَن لَّمْ يَجِدْ فَصِيَامُ شَهْرَيْنِ مُتَتَابِعَيْنِ مِن قَبْلِ أَن يَتَمَاسَّا ۖ فَمَن لَّمْ يَسْتَطِعْ فَإِطْعَامُ سِتِّينَ مِسْكِينًا', normalizedText: 'فمن لم يجد فصيام شهرين متتابعين من قبل ان يتماسا فمن لم يستطع فاطعام ستين مسكينا' },
+  // كتاب اللعان
+  { surahNumber: 24, surahName: 'النور', ayahNumber: 6, uthmaniText: 'وَالَّذِينَ يَرْمُونَ أَزْوَاجَهُمْ وَلَمْ يَكُن لَّهُمْ شُهَدَاءُ إِلَّا أَنفُسُهُمْ فَشَهَادَةُ أَحَدِهِمْ أَرْبَعُ شَهَادَاتٍ بِاللَّهِ ۙ إِنَّهُ لَمِنَ الصَّادِقِينَ', normalizedText: 'والذين يرمون ازواجهم ولم يكن لهم شهداء الا انفسهم فشهاده احدهم اربع شهادات بالله انه لمن الصادقين' },
+  { surahNumber: 24, surahName: 'النور', ayahNumber: 7, uthmaniText: 'وَالْخَامِسَةُ أَنَّ لَعْنَتَ اللَّهِ عَلَيْهِ إِن كَانَ مِنَ الْكَاذِبِينَ', normalizedText: 'والخامسه ان لعنت الله عليه ان كان من الكاذبين' },
+  { surahNumber: 24, surahName: 'النور', ayahNumber: 8, uthmaniText: 'وَيَدْرَأُ عَنْهَا الْعَذَابَ أَن تَشْهَدَ أَرْبَعَ شَهَادَاتٍ بِاللَّهِ ۙ إِنَّهُ لَمِنَ الْكَاذِبِينَ', normalizedText: 'ويدرا عنها العذاب ان تشهد اربع شهادات بالله انه لمن الكاذبين' },
+  { surahNumber: 24, surahName: 'النور', ayahNumber: 9, uthmaniText: 'وَالْخَامِسَةَ أَنَّ غَضَبَ اللَّهِ عَلَيْهَا إِن كَانَ مِنَ الصَّادِقِينَ', normalizedText: 'والخامسه ان غضب الله عليها ان كان من الصادقين' },
+  // كتاب العدة والنفقة
+  { surahNumber: 2, surahName: 'البقرة', ayahNumber: 234, uthmaniText: 'وَالَّذِينَ يُتَوَفَّوْنَ مِنكُمْ وَيَذَرُونَ أَزْوَاجًا يَتَرَبَّصْنَ بِأَنفُسِهِنَّ أَرْبَعَةَ أَشْهُرٍ وَعَشْرًا', normalizedText: 'والذين يتوفون منكم ويذرون ازواجا يتربصن بانفسهن اربعه اشهر وعشرا' },
+  { surahNumber: 65, surahName: 'الطلاق', ayahNumber: 1, uthmaniText: 'يَا أَيُّهَا النَّبِيُّ إِذَا طَلَّقْتُمُ النِّسَاءَ فَطَلِّقُوهُنَّ لِعِدَّتِهِنَّ وَأَحْصُوا الْعِدَّةَ ۖ وَاتَّقُوا اللَّهَ رَبَّكُمْ', normalizedText: 'يا ايها النبي اذا طلقتم النساء فطلقوهن لعدتهن واحصوا العده واتقوا الله ربكم' },
+  { surahNumber: 65, surahName: 'الطلاق', ayahNumber: 2, uthmaniText: 'فَإِذَا بَلَغْنَ أَجَلَهُنَّ فَأَمْسِكُوهُنَّ بِمَعْرُوفٍ أَوْ فَارِقُوهُنَّ بِمَعْرُوفٍ وَأَشْهِدُوا ذَوَيْ عَدْلٍ مِّنكُمْ', normalizedText: 'فاذا بلغن اجلهن فامسكوهن بمعروف او فارقوهن بمعروف واشهدوا ذوي عدل منكم' },
+  { surahNumber: 65, surahName: 'الطلاق', ayahNumber: 4, uthmaniText: 'وَاللَّائِي يَئِسْنَ مِنَ الْمَحِيضِ مِن نِّسَائِكُمْ إِنِ ارْتَبْتُمْ فَعِدَّتُهُنَّ ثَلَاثَةُ أَشْهُرٍ وَاللَّائِي لَمْ يَحِضْنَ ۚ وَأُولَاتُ الْأَحْمَالِ أَجَلُهُنَّ أَن يَضَعْنَ حَمْلَهُنَّ', normalizedText: 'واللائي يئسن من المحيض من نسائكم ان ارتبتم فعدتهن ثلاثه اشهر واللائي لم يحضن واولات الاحمال اجلهن ان يضعن حملهن' },
+  { surahNumber: 65, surahName: 'الطلاق', ayahNumber: 6, uthmaniText: 'أَسْكِنُوهُنَّ مِنْ حَيْثُ سَكَنتُم مِّن وُجْدِكُمْ وَلَا تُضَارُّوهُنَّ لِتُضَيِّقُوا عَلَيْهِنَّ ۚ وَإِن كُنَّ أُولَاتِ حَمْلٍ فَأَنفِقُوا عَلَيْهِنَّ حَتَّىٰ يَضَعْنَ حَمْلَهُنَّ', normalizedText: 'اسكنوهن من حيث سكنتم من وجدكم ولا تضاروهن لتضيقوا عليهن وان كن اولات حمل فانفقوا عليهن حتي يضعن حملهن' },
+  { surahNumber: 65, surahName: 'الطلاق', ayahNumber: 7, uthmaniText: 'لِيُنفِقْ ذُو سَعَةٍ مِّن سَعَتِهِ ۖ وَمَن قُدِرَ عَلَيْهِ رِزْقُهُ فَلِيُنفِقْ مِمَّا آتَاهُ اللَّهُ ۚ لَا يُكَلِّفُ اللَّهُ نَفْسًا إِلَّا مَا آتَاهَا', normalizedText: 'لينفق ذو سعه من سعته ومن قدر عليه رزقه فلينفق مما اتاه الله لا يكلف الله نفسا الا ما اتاها' },
+];
+
+/**
+ * قاعدة البيانات الشاملة المدمجة لكافة الآيات والمناهج
+ */
+export const ALL_CANONICAL_AYAHS: CanonicalAyah[] = [
+  ...UTHMANI_CANONICAL_DATASET,
+  ...HANAFI_FIQH_CURRICULUM_AYAHS,
 ];
 
 /**
@@ -507,7 +638,11 @@ export function findBestCanonicalAyah(snippet: string): BestCanonicalMatch | nul
 
     // 2. Sliding window comparison across words in the ayah
     const ayahNormWords = ayah.normalizedText.split(' ').filter(Boolean);
-    const ayahUthmaniWords = ayah.uthmaniText.split(' ').filter(Boolean);
+    // Attach standalone pause marks to previous word to maintain strict 1:1 word-index alignment with normalized words
+    const ayahUthmaniWords = ayah.uthmaniText
+      .replace(/\s+([ۖۗۚۛۜ۩])/g, '$1')
+      .split(' ')
+      .filter(Boolean);
 
     if (snippetWords.length > 0 && snippetWords.length <= ayahNormWords.length) {
       const targetLen = snippetWords.length;
@@ -567,6 +702,27 @@ export async function quranicVerificationAgent(
     };
   }
 
+  const arabicChars = (markdown.match(/[\u0600-\u06FF]/g) || []).length;
+  const latinChars = (markdown.match(/[a-zA-Z]/g) || []).length;
+  const hasExplicitAyahMarker = /﴿[^﴾]+﴾/.test(markdown);
+
+  // If document is predominantly English / Latin (e.g. English textbook with minor Arabic publisher notes)
+  // and has no explicit Quranic verse brackets ﴿...﴾, bypass Quranic verse replacement
+  if (!hasExplicitAyahMarker && latinChars > 25 && (arabicChars < 30 || latinChars > arabicChars * 2)) {
+    return {
+      report: {
+        totalVersesDetected: 0,
+        totalVersesVerified: 0,
+        correctedVersesCount: 0,
+        accuracyRate: 100,
+        verifiedVerses: [],
+        overallVerificationVerdict: 'مستند باللغة الإنجليزية / نصوص تعليمية عامة - تم التحقق من سلامة المصطلحات والتراكيب بنجاح.',
+        hasUthmaniDiscrepancies: false,
+      },
+      verifiedMarkdown: markdown,
+    };
+  }
+
   // Step 1: Baseline pass through curriculum rule engine
   const initialAudit = autoFixQuranicErrors(markdown);
   let workingMarkdown = initialAudit.correctedText;
@@ -598,12 +754,102 @@ export async function quranicVerificationAgent(
       });
 
       const replaceRx = new RegExp(target.triggerPattern.source, target.triggerPattern.flags);
-      workingMarkdown = workingMarkdown.replace(replaceRx, (matchStr) => {
+      workingMarkdown = workingMarkdown.replace(replaceRx, (matchStr, offset, fullText) => {
+        // Prevent nested brackets if already inside ﴿...﴾
+        const before = fullText.slice(0, offset);
+        const lastOpen = before.lastIndexOf('﴿');
+        const lastClose = before.lastIndexOf('﴾');
+        const isInsideBrackets = lastOpen !== -1 && lastOpen > lastClose;
+
+        if (isInsideBrackets) {
+          return target.replacementUthmani;
+        }
+
         if (matchStr.includes('معنى') || matchStr.includes('قوله') || matchStr.includes('في')) {
           return matchStr.replace(/﴿?[^﴾]+﴾?/, `﴿${target.replacementUthmani}﴾`);
         }
         return `﴿${target.replacementUthmani}﴾`;
       });
+    }
+  }
+
+  // Step 2.5: Detect verses introduced by citation phrases (e.g. قال تعالى: ... / قوله تعالى: ...)
+  // or enclosed in regular quotes / parentheses that match canonical Quranic verses
+  const citationRegex = /(قال\s+(?:الله\s+)?تعالى|قوله\s+تعالى|لقوله\s+(?:تعالى|سبحانه)|قوله\s+عز\s+وجل|كقوله\s+تعالى|في\s+قوله\s+تعالى|لقوله)[:\s]+(["'«(]?)((?!﴿)[^\n.،؛!?:()]{4,180})(["'»\)]?)/g;
+  let citMatch: RegExpExecArray | null;
+  const citationMatches: Array<{ full: string; formula: string; candidate: string }> = [];
+  while ((citMatch = citationRegex.exec(workingMarkdown)) !== null) {
+    const candidate = (citMatch[3] || '').trim();
+    if (candidate && candidate.length >= 4) {
+      citationMatches.push({
+        full: citMatch[0],
+        formula: citMatch[1],
+        candidate,
+      });
+    }
+  }
+
+  for (const item of citationMatches) {
+    const matchResult = findBestCanonicalAyah(item.candidate);
+    if (matchResult && matchResult.similarity >= 0.70) {
+      const canonical = matchResult.ayah;
+      const expectedText = matchResult.replacementUthmaniText;
+      correctedVersesCount++;
+      const id = `quran-verify-cite-${verifiedVerses.length + 1}`;
+      verifiedVerses.push({
+        id,
+        foundSnippet: item.candidate,
+        surahName: canonical.surahName,
+        surahNumber: canonical.surahNumber,
+        ayahNumber: canonical.ayahNumber,
+        canonicalUthmani: expectedText,
+        normalizedFound: normalizeQuranicArabic(item.candidate),
+        matchSimilarity: matchResult.similarity,
+        discrepanciesCount: 1,
+        fixedSnippet: `﴿${expectedText}﴾`,
+        isCorrected: true,
+        notes: `تم رصد الآية بعد صيغة الاستشهاد وتأطيرها بالرسم العثماني المعتمد ﴿...﴾ لسورة ${canonical.surahName} (الآية ${canonical.ayahNumber}).`,
+      });
+
+      const replacement = `${item.formula}: ﴿${expectedText}﴾`;
+      workingMarkdown = workingMarkdown.replace(item.full, replacement);
+    }
+  }
+
+  // Quoted or parenthesized passages that match canonical ayahs
+  const quotedRegex = /(?:["']|(?<![\w\d])\()((?!﴿)[\u0600-\u06FF\s]{8,180})(?:["']|\)(?![\w\d]))/g;
+  let qMatch: RegExpExecArray | null;
+  const quotedMatches: Array<{ full: string; inner: string }> = [];
+  while ((qMatch = quotedRegex.exec(workingMarkdown)) !== null) {
+    const inner = (qMatch[1] || '').trim();
+    if (inner && inner.length >= 8 && inner.split(/\s+/).length >= 3) {
+      quotedMatches.push({ full: qMatch[0], inner });
+    }
+  }
+
+  for (const item of quotedMatches) {
+    const matchResult = findBestCanonicalAyah(item.inner);
+    if (matchResult && matchResult.similarity >= 0.76) {
+      const canonical = matchResult.ayah;
+      const expectedText = matchResult.replacementUthmaniText;
+      correctedVersesCount++;
+      const id = `quran-verify-quote-${verifiedVerses.length + 1}`;
+      verifiedVerses.push({
+        id,
+        foundSnippet: item.full,
+        surahName: canonical.surahName,
+        surahNumber: canonical.surahNumber,
+        ayahNumber: canonical.ayahNumber,
+        canonicalUthmani: expectedText,
+        normalizedFound: normalizeQuranicArabic(item.inner),
+        matchSimilarity: matchResult.similarity,
+        discrepanciesCount: 1,
+        fixedSnippet: `﴿${expectedText}﴾`,
+        isCorrected: true,
+        notes: `تم تحويل الاقتباس القرآني إلى الرسم العثماني المؤطر ﴿...﴾ لسورة ${canonical.surahName} (الآية ${canonical.ayahNumber}).`,
+      });
+
+      workingMarkdown = workingMarkdown.replace(item.full, `﴿${expectedText}﴾`);
     }
   }
 

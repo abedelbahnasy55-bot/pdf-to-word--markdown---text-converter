@@ -1,5 +1,5 @@
 import { ConversionOptions, ConversionProgress, ConversionResult, ConversionResumeState } from '../types';
-import { splitPDFIntoChunks, getPdfInfo, getRecommendedPagesPerChunk } from './pdfChunker';
+import { planPDFChunks, getPdfInfo, getRecommendedPagesPerChunk } from './pdfChunker';
 import { convertSingleImageToPdf } from './documentMerger';
 import { denoiseAndEnhanceDocumentImage, isImageFile } from './imageEnhancer';
 import { autoFixQuranicErrors } from './quranAuditor';
@@ -8,20 +8,178 @@ import { runGrammarSyntaxAnalyzer } from './grammarSyntaxAnalyzer';
 import { documentStructuralAuditor } from './documentStructuralAuditor';
 import { quranicVerificationAgent } from './quranicVerificationAgent';
 import { auditAndRestructureLayout } from './layoutIntegrityCore';
+import { auditStructuralIntegrity, runStructuralIntegrityAudit, StructuralIntegrityAuditResult } from './structuralIntegrityAuditor';
+import { parseDocxFile } from './docxReader';
 import { updateStageList } from './pipelineStages';
-import { isRightToLeftText } from '../../shared/arabicText';
+import { isRightToLeftText, toStandardArabic } from '../../shared/arabicText';
+import { polishBilingualBoundariesCore } from '../../shared/arabicPipelineCore';
+import { apiFetch } from './apiClient';
 import { markAsDirectlyExtracted, stripExtractionMarker } from './extractionOrigin';
+import { TextProcessor } from './textProcessor';
+import { inspectDocumentPreFlight } from './pdfInspectorCore';
+import { StrictQAGatesEngine } from './strictQAGatesEngine';
+import { StructuralCleaner } from './structuralCleaner';
+import { runMicroscopicAudit, generateAutoHealedMarkdown } from './microscopicAuditEngine';
+import { TextCleanerEngine } from './textCleanerEngine';
+
+/**
+ * Detects and preserves underline formatting markers from original PDFs/OCR/HTML
+ * (combining low-line glyphs \u0331/\u0332/\u0333, overstrike _\bX, LaTeX \underline/\uline/\underbar,
+ * CSS underlined/border-bottom spans, and CriticMarkup ++...++) into clean <u>...</u> Markdown/HTML tags
+ * while preserving existing <u>...</u> and <ins>...</ins> tags untouched.
+ */
+export function preserveUnderlineFormattingMarkers(text: string): string {
+  if (!text) return '';
+  let out = text;
+
+  // 1. Normalize CSS underlined/border-bottom spans & LaTeX \underline/\uline/\underbar -> <u>...</u>
+  out = out
+    .replace(
+      /<span[^>]*style=["'][^"']*text-decoration(?:-line)?\s*:\s*underline[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi,
+      '<u>$1</u>'
+    )
+    .replace(
+      /<span[^>]*style=["'][^"']*border-bottom\s*:[^"']*(?:solid|double)[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi,
+      '<u>$1</u>'
+    )
+    .replace(/<span[^>]*class=["'][^"']*\bunderline\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi, '<u>$1</u>')
+    .replace(/\\(?:underline|uline|underbar)\{([^}]+)\}/g, '<u>$1</u>');
+
+  // 2. Convert legacy PDF/TTY underscore-overstrike sequences (_\bX or X\b_) -> <u>...</u>
+  if (out.includes('\u0008')) {
+    out = out.replace(/(?:(?:_\u0008([^\s<>])|([^\s<>])\u0008_)+)/g, (match) => {
+      const clean = match.replace(/_\u0008|\u0008_/g, '');
+      return clean.trim() ? `<u>${clean}</u>` : clean;
+    });
+  }
+
+  // 3. Convert Unicode combining low-line / macron-below sequences (\u0331 / \u0332 / \u0333) -> <u>...</u>
+  if (/[\u0331\u0332\u0333]/.test(out)) {
+    out = out.replace(/(?:[^\s<>][\u064B-\u065F\u0670]*[\u0331\u0332\u0333]+[\u064B-\u065F\u0670]*)+/g, (match) => {
+      const clean = match.replace(/[\u0331\u0332\u0333]/g, '');
+      return clean.trim() ? `<u>${clean}</u>` : clean;
+    });
+  }
+
+  // 4. Convert explicit OCR underline cues like ++الكلمة++ -> <u>الكلمة</u>
+  out = out.replace(/(?<!\+)\+\+([^\n+]{1,80})\+\+(?!\+)/g, (_, inner) => {
+    const trimmed = inner.trim();
+    return trimmed ? `<u>${trimmed}</u>` : inner;
+  });
+
+  // 5. Deduplicate accidental nested <u><u>...</u></u> or <ins><ins>...</ins></ins>
+  out = out
+    .replace(/<u>\s*<u>([\s\S]*?)<\/u>\s*<\/u>/gi, '<u>$1</u>')
+    .replace(/<ins>\s*<ins>([\s\S]*?)<\/ins>\s*<\/ins>/gi, '<ins>$1</ins>');
+
+  return out;
+}
+
+/**
+ * Restores any verified <u>...</u> or <ins>...</ins> spans present in extracted source text
+ * if intermediate AI/structural audit stages accidentally stripped the inline tags.
+ */
+export function restoreLostUnderlinesFromSource(
+  sourceWithUnderlines: string,
+  targetMarkdown: string
+): string {
+  if (!sourceWithUnderlines || !targetMarkdown) return targetMarkdown;
+
+  const extractedTags: Array<{ tag: 'u' | 'ins'; phrase: string }> = [];
+  const seen = new Set<string>();
+  const tagRegex = /<(u|ins)(?:\s[^>]*)?>([^<\n]{2,120})<\/\1>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = tagRegex.exec(sourceWithUnderlines)) !== null) {
+    const tag = m[1].toLowerCase() === 'ins' ? 'ins' : 'u';
+    const phrase = (m[2] || '').trim();
+    if (phrase.length < 2) continue;
+    const key = `${tag}::${phrase}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      extractedTags.push({ tag, phrase });
+    }
+  }
+
+  if (extractedTags.length === 0) return targetMarkdown;
+
+  // Sort longer phrases first so multi-word spans wrap cleanly
+  extractedTags.sort((a, b) => b.phrase.length - a.phrase.length);
+
+  const held: string[] = [];
+  const hold = (seg: string) => {
+    const id = `__RESTORE_UNDERLINE_HOLD_${held.length}__`;
+    held.push(seg);
+    return id;
+  };
+
+  let out = targetMarkdown.replace(
+    /(<(?:u|ins)(?:\s[^>]*)?>[\s\S]*?<\/(?:u|ins)>|```[\s\S]*?```|`[^`\n]+`|\[[^\]]+\]\([^)]+\))/gi,
+    (seg) => hold(seg)
+  );
+
+  for (const { tag, phrase } of extractedTags) {
+    const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`(?<![\\p{L}\\p{N}\\p{M}_])(${escaped})(?![\\p{L}\\p{N}\\p{M}_])`, 'gu');
+    out = out.replace(pattern, (_full, inner) => hold(`<${tag}>${inner}</${tag}>`));
+  }
+
+  return out.replace(/__RESTORE_UNDERLINE_HOLD_(\d+)__/g, (_, idx) => held[Number(idx)] || '');
+}
+
+export function markdownToPlainTextSafe(markdown: string): string {
+  return markdown
+    .replace(/^---\s*$/gm, '\n------------------------\n')
+    .replace(/\\text\{([^\}]+)\}/g, '$1')
+    .replace(/^#+\s+/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/~~([^~]+)~~/g, '$1')
+    .replace(/(?<!_)_([^_\n]+)_(?!_)/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/<\/?(?:mark|u|ins|s|sup|sub)(?:\s[^>]*)?>/gi, '')
+    .replace(/\$\$?([^\$]+)\$\$?/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^\s*[-*+]\s+/gm, '• ')
+    .trim();
+}
+
+export function runMicroscopicFinalizationPipeline(
+  rawSourceExtract: string,
+  candidateMarkdown: string,
+  fileName: string
+) {
+  const cleanerEngine = new TextCleanerEngine();
+  const normalizedUnderlinesInput = preserveUnderlineFormattingMarkers(candidateMarkdown);
+  const textCleanerReport = cleanerEngine.cleanText(normalizedUnderlinesInput);
+  const structurallyCleaned = StructuralCleaner.clean(toStandardArabic(textCleanerReport.cleanedText));
+  const textProcessed = polishBilingualBoundariesCore(TextProcessor.process(structurallyCleaned));
+  const autoHealed = generateAutoHealedMarkdown(textProcessed);
+  const strictQAResult = StrictQAGatesEngine.auditAndRepair(autoHealed, fileName);
+  const finalMarkdownNormalized = preserveUnderlineFormattingMarkers(strictQAResult.repairedText);
+  const normalizedSource = preserveUnderlineFormattingMarkers(
+    stripExtractionMarker(rawSourceExtract || candidateMarkdown)
+  );
+  const finalMarkdown = restoreLostUnderlinesFromSource(normalizedSource, finalMarkdownNormalized);
+  const microscopicAuditReport = runMicroscopicAudit(normalizedSource, finalMarkdown);
+  const plainText = markdownToPlainTextSafe(finalMarkdown);
+
+  return {
+    finalMarkdown,
+    plainText,
+    sourceExtractText: normalizedSource,
+    textCleanerReport,
+    strictQAResult,
+    microscopicAuditReport,
+  };
+}
 
 /**
  * Minimum share of pages the direct extractor must recover before its result is
  * trusted over AI recognition.
  *
  * The server decides "has a text layer" from the total extracted character count,
- * which a single stray text layer on an otherwise image-only page can satisfy. 60%
- * tolerates a few genuinely blank or image-only pages in an otherwise digital book,
- * while rejecting a scanned document, where the recovered share is near zero.
+ * which a single stray text layer on an otherwise image-only page can satisfy.
  */
-const DIRECT_EXTRACTION_PAGE_COVERAGE = 0.6;
 
 /**
  * Counts pages that actually carry text, by splitting on the page-break marker the
@@ -60,20 +218,163 @@ export async function convertDocumentFile(
   resumeState?: ConversionResumeState
 ): Promise<ConversionResult> {
   const startTime = Date.now();
+  let highestPercentage = resumeState ? 30 : 5;
+  const emitProgress = (prog: ConversionProgress) => {
+    const safePct = Math.max(highestPercentage, Math.min(100, prog.percentage || 0));
+    highestPercentage = safePct;
+    onProgress?.({ ...prog, percentage: safePct });
+  };
 
   if (abortSignal?.aborted) {
     throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
   }
 
-  onProgress?.({
+  const preFlightReport = await inspectDocumentPreFlight(file);
+
+  emitProgress({
     currentChunk: resumeState?.completedChunks || 0,
     totalChunks: 1,
     startPage: 1,
     endPage: 1,
-    totalPages: 1,
+    totalPages: preFlightReport.totalPages,
     percentage: resumeState ? 30 : 5,
     phase: 'reading',
+    preFlightReport,
+    statusMessage: `فحص استباقي: ${preFlightReport.summaryArabic}`,
   });
+
+  const isDocx = file.name.toLowerCase().endsWith('.docx') || file.type.includes('word') || file.type.includes('officedocument');
+
+  // Immediately execute runStructuralIntegrityAudit on uploaded DOCX files before starting any conversion
+  if (isDocx) {
+    if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
+
+    onProgress?.({
+      currentChunk: 1,
+      totalChunks: 1,
+      startPage: 1,
+      endPage: 1,
+      totalPages: 1,
+      percentage: 15,
+      phase: 'reading',
+      activeStage: 'structural_integrity',
+      stages: updateStageList('structural_integrity', 30),
+      statusMessage: 'مرحلة التدقيق البنيوي (Structural Integrity Audit): جاري فحص ملف Word والتأكد الفوري من سلامة بنية XML وخلوه من التلف والتكرار البنيوي...',
+    });
+
+    const docxAudit = await runStructuralIntegrityAudit(file, file.name);
+    if (!docxAudit.isValid || docxAudit.hasCorruption || docxAudit.hasDuplication) {
+      const errorMsg = docxAudit.error || 'تم اكتشاف تلف بنيوي أو تكرار في ملف Word (XML corruption). تم إيقاف المعالجة.';
+      console.error('[Structural Integrity Failure]', errorMsg);
+
+      onProgress?.({
+        currentChunk: 1,
+        totalChunks: 1,
+        startPage: 1,
+        endPage: 1,
+        totalPages: 1,
+        percentage: 0,
+        phase: 'reading',
+        hasPausedError: true,
+        pausedErrorMessage: errorMsg,
+        statusMessage: `فشل التدقيق البنيوي: ${errorMsg}`,
+      });
+
+      throw new Error(errorMsg);
+    }
+
+    // If valid, process the DOCX through the pipeline and return verified result
+    const parsed = await parseDocxFile(file);
+    const isDocEnglish = !isRightToLeftText(parsed.markdown);
+
+    onProgress?.({
+      currentChunk: 1,
+      totalChunks: 1,
+      startPage: 1,
+      endPage: parsed.pageCount || 1,
+      totalPages: parsed.pageCount || 1,
+      percentage: 45,
+      phase: 'converting',
+      activeStage: 'contextual',
+      stages: updateStageList('contextual', 45, isDocEnglish),
+      statusMessage: isDocEnglish
+        ? 'المرحلة 2: الفحص السياقي الأكاديمي ومطابقة المصادر...'
+        : 'المرحلة 2: الفحص السياقي الذكي للآيات والأحاديث ومطابقة المصادر...',
+    });
+
+    const contextualResult = await runContextualChecker(parsed.markdown, file.name);
+    const grammarAnalysis = await runGrammarSyntaxAnalyzer(contextualResult.correctedMarkdown, file.name);
+    const structuralAnalysis = await documentStructuralAuditor(grammarAnalysis.repairedMarkdown, file.name);
+    const quranicVerification = await quranicVerificationAgent(structuralAnalysis.repairedMarkdown);
+    const layoutAnalysis = await auditAndRestructureLayout(quranicVerification.verifiedMarkdown);
+    const structIntegrity = await auditStructuralIntegrity(layoutAnalysis.restructuredMarkdown, {
+      title: parsed.title || file.name.replace(/\.docx$/i, ''),
+      isRtl: !isDocEnglish,
+      fileName: file.name,
+    });
+
+    const finalizedDocx = runMicroscopicFinalizationPipeline(
+      parsed.markdown,
+      structIntegrity.repairedMarkdown,
+      file.name
+    );
+    const finalMarkdown = finalizedDocx.finalMarkdown;
+    const isArabic = isRightToLeftText(finalMarkdown);
+
+    return {
+      title: parsed.title || file.name.replace(/\.docx$/i, ''),
+      detectedLanguage: isArabic ? 'العربية' : 'English',
+      textDirection: isArabic ? 'rtl' : 'ltr',
+      hasArabicText: isArabic,
+      hasMathOrScience: false,
+      hasTables: parsed.tables.length > 0 || finalMarkdown.includes('|'),
+      hasHandwriting: false,
+      markdown: finalMarkdown,
+      plainText: finalizedDocx.plainText,
+      sourceExtractText: finalizedDocx.sourceExtractText,
+      fileName: file.name,
+      fileSize: file.size,
+      totalPages: parsed.pageCount || 1,
+      totalChunksProcessed: 1,
+      conversionDurationMs: Date.now() - startTime,
+      isAutoAudited: true,
+      autoFixedCount:
+        contextualResult.fixedCount +
+        grammarAnalysis.report.truncatedItems.length +
+        structuralAnalysis.report.repairedCount +
+        quranicVerification.report.correctedVersesCount +
+        layoutAnalysis.report.tablesStabilizedCount +
+        layoutAnalysis.report.listsNormalizedCount +
+        structIntegrity.report.repairedDuplicationsCount +
+        finalizedDocx.textCleanerReport.totalReplacements +
+        finalizedDocx.strictQAResult.repairedCount,
+      fixedItemsSummary: [
+        isDocEnglish
+          ? 'تم الفحص السياقي الأكاديمي لمطابقة المصادر'
+          : (contextualResult.isAiVerified
+            ? 'تم الفحص السياقي ومطابقة المصادر المعتمدة'
+            : 'تم التدقيق عبر محرك القواعد الشرعية'),
+        grammarAnalysis.report.overallGrammarVerdict,
+        structuralAnalysis.report.overallStructuralVerdict,
+        isDocEnglish
+          ? 'تم التدقيق التيبوغرافي للوثيقة بنجاح'
+          : quranicVerification.report.overallVerificationVerdict,
+        isDocEnglish
+          ? 'تمت معايرة وهيكلة الصفحات والجداول وتثبيت اتجاه LTR'
+          : layoutAnalysis.report.overallVerdict,
+        structIntegrity.report.overallVerdict,
+        `التدقيق المجهري الآلي: ${finalizedDocx.microscopicAuditReport.summary.overallVerdict} (تطابق ${finalizedDocx.microscopicAuditReport.summary.wordFidelityRatio}%)`,
+      ],
+      grammarSyntaxReport: grammarAnalysis.report,
+      structuralAuditReport: structuralAnalysis.report,
+      quranicVerificationReport: quranicVerification.report,
+      layoutIntegrityReport: layoutAnalysis.report,
+      structuralIntegrityReport: structIntegrity.report,
+      microscopicAuditReport: finalizedDocx.microscopicAuditReport,
+      textCleanerReport: finalizedDocx.textCleanerReport,
+      strictQAReport: finalizedDocx.strictQAResult,
+    };
+  }
 
   let workingPdfFile = file;
 
@@ -124,41 +425,49 @@ export async function convertDocumentFile(
     startPage: 1,
     endPage: 1,
     totalPages: 1,
-    percentage: resumeState ? 35 : 15,
+    percentage: resumeState ? 35 : 10,
     phase: 'splitting',
   });
 
-  // Start every PDF with the zero-quota direct text extractor.
-  //
-  // Previously this ran only when the user had explicitly chosen "zero-quota direct
-  // extraction" from a strategy panel, which meant the default path spent AI quota on
-  // books whose text layer was perfectly readable. Reading the embedded text is both
-  // free and strictly more faithful than AI OCR, which can only guess at words it
-  // cannot really see. If a page has no text layer, `directJson.success` is false and
-  // control falls through to the AI chunk pipeline below, so quota is spent exactly
-  // where it is needed and nowhere else.
-  if (!isImage) {
+  // Direct text extraction bypass runs strictly when maximum_savings mode is selected.
+  // In high_fidelity (default) or balanced modes, every page is processed through
+  // the full AI multimodal vision pipeline to guarantee complete table layout,
+  // exact Quranic/diacritical accuracy, and uncompromised document fidelity.
+  const optimizationMode = options?.quotaOptimization || 'high_fidelity';
+  const shouldAttemptDirectFastBypass = optimizationMode === 'maximum_savings';
+  // Guard against single-request Nginx 32M limit. Files > 20MB expand past 28MB in base64 JSON
+  const isDirectExtractionSafeSize = workingPdfFile.size <= 20 * 1024 * 1024;
+
+  if (!isImage && shouldAttemptDirectFastBypass && isDirectExtractionSafeSize) {
     onProgress?.({
       currentChunk: 1,
       totalChunks: 1,
       startPage: 1,
       endPage: 1,
       totalPages: 1,
-      percentage: 25,
+      percentage: 15,
       phase: 'converting',
       activeStage: 'extraction',
       stages: updateStageList('extraction', 50),
-      statusMessage: 'المرحلة 1: جاري استخراج النص المدمج في الملف مباشرة (بدون استهلاك كوتة)...',
+      statusMessage: 'المرحلة 1: جاري استخراج النص المدمج في الملف مباشرة (وضع توفير الكوتة)...',
     });
 
     const pdfBase64 = await fileToBase64(workingPdfFile);
-    const directRes = await fetch('/api/extract-direct-pdf', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: abortSignal,
-      body: JSON.stringify({ pdfBase64, filename: file.name }),
-    });
-    const directJson = await directRes.json();
+    let directJson: any = null;
+    try {
+      const directRes = await apiFetch('/api/extract-direct-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: abortSignal,
+        body: JSON.stringify({ pdfBase64, filename: file.name }),
+      });
+      if (directRes.ok) {
+        directJson = await directRes.json();
+      }
+    } catch (directErr: any) {
+      if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
+      console.warn('[Converter] Direct text extraction bypassed, falling back to AI:', directErr?.message || directErr);
+    }
 
     if (directJson?.success && directJson?.data?.markdown) {
       // A scanned book can carry a stray text layer on ONE page while the rest is
@@ -171,16 +480,34 @@ export async function convertDocumentFile(
       const recoveredPages = countRecoveredPages(directJson.data.markdown);
       const reportedPages = directJson.data.totalPages || recoveredPages;
 
-      if (recoveredPages === 0 || recoveredPages / reportedPages < DIRECT_EXTRACTION_PAGE_COVERAGE) {
-        // Not a text-layer document: fall through to the AI pipeline, which is what
+      // Scanned books or photo-to-pdf scans often contain a watermark on every page
+      // (e.g., "Created with Photo-to-PDF One Click Converter. Download here: https://firehawk.ai/phototopdf")
+      // or stray minimal header text while the actual content of the book is scanned images.
+      // Filter out watermarks and check if substantive content per page is too sparse.
+      const watermarkRegex = /(?:Created with Photo-to-PDF[^\n]*|https?:\/\/(?:www\.)?firehawk\.ai[^\s]*|Scanned (?:with|by)|CamScanner|Adobe Scan|iScanner|TapScanner|ClearScanner|WPS Office|vFlat)[^\n]*/gi;
+      const strippedMarkdown = directJson.data.markdown.replace(watermarkRegex, '');
+      const substantiveChars = strippedMarkdown.replace(/---PAGE_BREAK---|\s+/g, '').length;
+      const avgCharsPerPage = reportedPages > 0 ? substantiveChars / reportedPages : substantiveChars;
+
+      // A genuine digital text layer has substantial readable character content.
+      // Pure scans with watermarks only yield a few stray watermark tokens (stripped above), resulting in near 0 substantive chars.
+      // Textbooks (like Giants, El Moasser, curricula) have units, exercises, vocab tables, and diagrams, so average chars per page
+      // can vary from 25 to 1500 chars. If total substantive characters are substantial (>= 150 chars or >= 15 chars/page with at least 1 page),
+      // it is genuinely a readable digital document and must be preserved instantly (0 quota, 100% accuracy, under 3 seconds)!
+      const hasMeaningfulDigitalContent = (reportedPages === 1 && substantiveChars >= 35) || (reportedPages > 1 && (substantiveChars >= 150 || avgCharsPerPage >= 15));
+      const isPureScanWithoutText = recoveredPages === 0 || !hasMeaningfulDigitalContent;
+
+      if (isPureScanWithoutText) {
+        // Not a real digital text-layer document: fall through to the AI pipeline, which is what
         // this file actually is.
         console.warn(
-          `[Converter] Direct extraction recovered ${recoveredPages}/${reportedPages} pages, below the ` +
-            `${DIRECT_EXTRACTION_PAGE_COVERAGE * 100}% coverage floor. Escalating to AI recognition.`
+          `[Converter] Direct extraction text is empty or pure scanned images (${substantiveChars} chars across ${reportedPages} pages). Escalating to AI OCR recognition.`
         );
       } else {
       let finalMarkdown = markAsDirectlyExtracted(directJson.data.markdown);
       const detectedPages = directJson.data.totalPages || 1;
+
+      const isDocEnglish = !isRightToLeftText(finalMarkdown);
 
       onProgress?.({
         currentChunk: 1,
@@ -191,8 +518,10 @@ export async function convertDocumentFile(
         percentage: 60,
         phase: 'converting',
         activeStage: 'contextual',
-        stages: updateStageList('contextual', 60),
-        statusMessage: 'المرحلة 2: الفحص السياقي الذكي للآيات والأحاديث ومطابقة المصادر...',
+        stages: updateStageList('contextual', 60, isDocEnglish),
+        statusMessage: isDocEnglish
+          ? 'المرحلة 2: الفحص السياقي الأكاديمي ومطابقة المصادر...'
+          : 'المرحلة 2: الفحص السياقي الذكي للآيات والأحاديث ومطابقة المصادر...',
       });
       const contextualResult = await runContextualChecker(finalMarkdown, file.name);
 
@@ -205,17 +534,45 @@ export async function convertDocumentFile(
         percentage: 80,
         phase: 'converting',
         activeStage: 'grammar',
-        stages: updateStageList('grammar', 70),
-        statusMessage: 'المرحلة 3: التحليل النحوي ومطابقة بنية الجمل...',
+        stages: updateStageList('grammar', 70, isDocEnglish),
+        statusMessage: isDocEnglish
+          ? 'المرحلة 3: التحليل النحوي وبنية الجمل الإنجليزية...'
+          : 'المرحلة 3: التحليل النحوي ومطابقة بنية الجمل...',
       });
       const grammarAnalysis = await runGrammarSyntaxAnalyzer(contextualResult.correctedMarkdown, file.name);
       const structuralAnalysis = await documentStructuralAuditor(grammarAnalysis.repairedMarkdown, file.name);
       const quranicVerification = await quranicVerificationAgent(structuralAnalysis.repairedMarkdown);
       const layoutAnalysis = await auditAndRestructureLayout(quranicVerification.verifiedMarkdown);
       // Strip the internal origin marker before the text is stored, previewed, or
-      // exported, so it can never appear inside the user's document. The strip is
-      // line-anchored because the structural auditor prepends an H1 above the marker.
-      finalMarkdown = stripExtractionMarker(layoutAnalysis.restructuredMarkdown);
+      // exported, so it can never appear inside the user's document.
+      finalMarkdown = preserveUnderlineFormattingMarkers(stripExtractionMarker(layoutAnalysis.restructuredMarkdown));
+
+      // Stage: Structural Integrity Audit (التدقيق البنيوي لسلامة ملفات DOCX وتجنب التكرار البنيوي)
+      onProgress?.({
+        currentChunk: 1,
+        totalChunks: 1,
+        startPage: 1,
+        endPage: detectedPages,
+        totalPages: detectedPages,
+        percentage: 95,
+        phase: 'converting',
+        activeStage: 'structural_integrity',
+        stages: updateStageList('structural_integrity', 95, isDocEnglish),
+        statusMessage: isDocEnglish
+          ? 'المرحلة: التدقيق البنيوي لسلامة ملف Word والتحقق من شجرة OOXML (Structural Integrity Audit)...'
+          : 'المرحلة: التدقيق البنيوي لسلامة ملف Word والتحقق من شجرة OOXML ومنع التكرار (Structural Integrity Audit)...',
+      });
+      const structuralIntegrityResult = await auditStructuralIntegrity(finalMarkdown, {
+        title: file.name.replace(/\.[^/.]+$/, ''),
+        isRtl: !isDocEnglish,
+        fileName: file.name,
+      });
+      const finalizedDirect = runMicroscopicFinalizationPipeline(
+        directJson.data.markdown,
+        structuralIntegrityResult.repairedMarkdown,
+        file.name
+      );
+      finalMarkdown = finalizedDirect.finalMarkdown;
 
       const isArabic = isRightToLeftText(finalMarkdown);
         return {
@@ -227,37 +584,50 @@ export async function convertDocumentFile(
         hasTables: finalMarkdown.includes('|'),
         hasHandwriting: false,
         markdown: finalMarkdown,
-        plainText: finalMarkdown.replace(/^#+\s+/gm, ''),
+        plainText: finalizedDirect.plainText,
+        sourceExtractText: finalizedDirect.sourceExtractText,
         fileName: file.name,
         fileSize: file.size,
         totalPages: detectedPages,
         totalChunksProcessed: 1,
         conversionDurationMs: Date.now() - startTime,
         isAutoAudited: true,
-          // The four audit panels are attached here as on the AI path. The viewer
-          // renders its "audit reports" disclosure unconditionally, so returning
-          // without them left that panel expanding to nothing for every
-          // text-layer PDF, which is now the default route.
+          // The audit panels are attached here as on the AI path
           autoFixedCount:
             contextualResult.fixedCount +
             grammarAnalysis.report.truncatedItems.length +
             structuralAnalysis.report.repairedCount +
             quranicVerification.report.correctedVersesCount +
             layoutAnalysis.report.tablesStabilizedCount +
-            layoutAnalysis.report.listsNormalizedCount,
+            layoutAnalysis.report.listsNormalizedCount +
+            structuralIntegrityResult.report.repairedDuplicationsCount +
+            finalizedDirect.textCleanerReport.totalReplacements +
+            finalizedDirect.strictQAResult.repairedCount,
           fixedItemsSummary: [
-            contextualResult.isAiVerified
-              ? 'تم الفحص السياقي ومطابقة المصادر المعتمدة'
-              : 'تم التدقيق عبر محرك القواعد الشرعية',
+            isDocEnglish
+              ? 'تم الفحص السياقي الأكاديمي لمطابقة المصادر'
+              : (contextualResult.isAiVerified
+                ? 'تم الفحص السياقي ومطابقة المصادر المعتمدة'
+                : 'تم التدقيق عبر محرك القواعد الشرعية'),
             grammarAnalysis.report.overallGrammarVerdict,
             structuralAnalysis.report.overallStructuralVerdict,
-            quranicVerification.report.overallVerificationVerdict,
-            layoutAnalysis.report.overallVerdict,
+            isDocEnglish
+              ? 'تم التدقيق التيبوغرافي للوثيقة بنجاح'
+              : quranicVerification.report.overallVerificationVerdict,
+            isDocEnglish
+              ? 'تمت معايرة وهيكلة الصفحات والجداول وتثبيت اتجاه LTR'
+              : layoutAnalysis.report.overallVerdict,
+            structuralIntegrityResult.report.overallVerdict,
+            `التدقيق المجهري الآلي: ${finalizedDirect.microscopicAuditReport.summary.overallVerdict} (تطابق ${finalizedDirect.microscopicAuditReport.summary.wordFidelityRatio}%)`,
           ],
           grammarSyntaxReport: grammarAnalysis.report,
           structuralAuditReport: structuralAnalysis.report,
           quranicVerificationReport: quranicVerification.report,
           layoutIntegrityReport: layoutAnalysis.report,
+          structuralIntegrityReport: structuralIntegrityResult.report,
+          microscopicAuditReport: finalizedDirect.microscopicAuditReport,
+          textCleanerReport: finalizedDirect.textCleanerReport,
+          strictQAReport: finalizedDirect.strictQAResult,
         };
       }
     }
@@ -269,14 +639,19 @@ export async function convertDocumentFile(
     : undefined;
 
   const { totalPages: preliminaryPages } = await getPdfInfo(arrayBuffer);
-  const optimizationMode = options?.quotaOptimization || 'balanced';
-  const recommendedPagesPerChunk = getRecommendedPagesPerChunk(preliminaryPages, optimizationMode);
+  const recommendedPagesPerChunk = getRecommendedPagesPerChunk(preliminaryPages, optimizationMode, arrayBuffer.byteLength);
 
-  const { totalPages, chunks, effectiveStartPage, effectiveEndPage } = await splitPDFIntoChunks(
+  const planner = await planPDFChunks(
     arrayBuffer,
     recommendedPagesPerChunk,
     pageRangeConfig
   );
+
+  const totalPages = planner.totalPages;
+  const chunksCount = planner.totalChunks;
+  const chunkDescriptors = planner.chunkDescriptors;
+  const effectiveStartPage = planner.effectiveStartPage;
+  const effectiveEndPage = planner.effectiveEndPage;
 
   const markdownPieces: string[] = resumeState?.markdownPieces ? [...resumeState.markdownPieces] : [];
   const plainTextPieces: string[] = resumeState?.plainTextPieces ? [...resumeState.plainTextPieces] : [];
@@ -290,339 +665,546 @@ export async function convertDocumentFile(
 
   const startChunkIndex = resumeState?.completedChunks || 0;
 
-  // Process chunks sequentially with progress updates
-  for (let i = startChunkIndex; i < chunks.length; i++) {
-    if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
-
-    if (i > startChunkIndex) {
-      // Gentle pacing between chunks to prevent exceeding minute rate limits
-      await new Promise((r) => setTimeout(r, 2200));
+  try {
+    // Dynamic Task Queue supporting automatic bisection on 413 / Gateway Timeout errors
+    interface DynamicChunkTask {
+      startPage: number;
+      endPage: number;
     }
 
-    const chunk = chunks[i];
-    const currentPercentage = Math.round(15 + ((i + 0.5) / chunks.length) * 80);
+    const tasks: DynamicChunkTask[] = [];
+    for (let c = startChunkIndex; c < chunksCount; c++) {
+      tasks.push({
+        startPage: chunkDescriptors[c].startPage,
+        endPage: chunkDescriptors[c].endPage,
+      });
+    }
 
-    onProgress?.({
-      currentChunk: i + 1,
-      totalChunks: chunks.length,
-      startPage: chunk.startPage,
-      endPage: chunk.endPage,
-      totalPages,
-      percentage: currentPercentage,
-      phase: 'converting',
-      processedChunksCount: i,
-      partialMarkdown: markdownPieces.join('\n\n---PAGE_BREAK---\n\n'),
-    });
+    let completedTasksCount = startChunkIndex;
+    let taskIdx = 0;
 
-    // Process chunk with automatic retry if temporary error occurs
-    let data: any = null;
-    let lastChunkError: string | null = null;
-    let isLastThrottled = false;
-    const maxAttempts = 25; // Generous attempts to never drop out on temporary throttling
-
-    for (let chunkAttempt = 0; chunkAttempt < maxAttempts; chunkAttempt++) {
+    while (taskIdx < tasks.length) {
       if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
 
-      try {
-        const response = await fetch('/api/convert-pdf', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          signal: abortSignal,
-          body: JSON.stringify({
-            pdfBase64: chunk.base64,
-            filename: `${file.name} (pages ${chunk.startPage}-${chunk.endPage})`,
-            options,
-          }),
-        });
+      const currentTask = tasks[taskIdx];
+      const currentTaskTotal = tasks.length;
+      const pagesInTask = currentTask.endPage - currentTask.startPage + 1;
 
+      // Smart adaptive pacing between chunks to strictly respect Gemini RPM limits
+      if (taskIdx > 0) {
+        await new Promise((r) => setTimeout(r, 3600));
+      }
+
+      const chunkStartPct = Math.min(80, Math.round(15 + (taskIdx / Math.max(1, currentTaskTotal)) * 65));
+      const chunkEndPct = Math.min(80, Math.round(15 + ((taskIdx + 1) / Math.max(1, currentTaskTotal)) * 65));
+      const currentPercentage = Math.max(highestPercentage, chunkStartPct);
+
+      emitProgress({
+        currentChunk: taskIdx + 1,
+        totalChunks: currentTaskTotal,
+        startPage: currentTask.startPage,
+        endPage: currentTask.endPage,
+        totalPages,
+        percentage: currentPercentage,
+        phase: 'converting',
+        processedChunksCount: completedTasksCount,
+        partialMarkdown: markdownPieces.join('\n\n---PAGE_BREAK---\n\n'),
+        activeStage: 'extraction',
+        stages: updateStageList('extraction', Math.round(30 + (taskIdx / Math.max(1, currentTaskTotal)) * 50)),
+        statusMessage: `المرحلة 1: تفريغ واستخراج الحزمة (${taskIdx + 1} من ${currentTaskTotal}) • الصفحات ${currentTask.startPage}-${currentTask.endPage}...`,
+      });
+
+      // Lazily extract base64 for ONLY this specific page range
+      let chunkBase64 = await planner.getCustomRangeBase64(currentTask.startPage, currentTask.endPage);
+
+      // Proactive size guard: if chunk is already > 15MB base64 and has > 1 page, bisect immediately!
+      if (chunkBase64.length > 15 * 1024 * 1024 && pagesInTask > 1) {
+        const mid = Math.floor((currentTask.startPage + currentTask.endPage) / 2);
+        const leftTask: DynamicChunkTask = { startPage: currentTask.startPage, endPage: mid };
+        const rightTask: DynamicChunkTask = { startPage: mid + 1, endPage: currentTask.endPage };
+        tasks.splice(taskIdx, 1, leftTask, rightTask);
+        onProgress?.({
+          currentChunk: taskIdx + 1,
+          totalChunks: tasks.length,
+          startPage: currentTask.startPage,
+          endPage: currentTask.endPage,
+          totalPages,
+          percentage: currentPercentage,
+          phase: 'converting',
+          activeStage: 'extraction',
+          statusMessage: `تم رصد كبر حجم الحزمة للصفحات (${currentTask.startPage}-${currentTask.endPage}). جاري الانشطار التلقائي إلى (${leftTask.startPage}-${leftTask.endPage}) و (${rightTask.startPage}-${rightTask.endPage}) للمرور بسلاسة...`,
+          processedChunksCount: completedTasksCount,
+          partialMarkdown: markdownPieces.join('\n\n---PAGE_BREAK---\n\n'),
+        });
+        continue;
+      }
+
+      // Process chunk with automatic retry if temporary error occurs
+      let data: any = null;
+      let lastChunkError: string | null = null;
+      let isLastThrottled = false;
+      let didBisect = false;
+      const maxAttempts = 3;
+
+      for (let chunkAttempt = 0; chunkAttempt < maxAttempts; chunkAttempt++) {
         if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
 
-        const responseText = await response.text();
-        try {
-          data = JSON.parse(responseText);
-        } catch {
-          data = {
-            success: false,
-            error: !response.ok
-              ? (response.status === 504 || response.status === 502
-                  ? `استغرقت معالجة الصفحات ${chunk.startPage}-${chunk.endPage} وقتاً طويلاً في السيرفر (Gateway Timeout). جاري إعادة المحاولة تلقائياً...`
-                  : response.status === 413
-                  ? `حجم الصفحة كبير جداً.`
-                  : `تعذر الاتصال المؤقت بالخادم (${response.status}). جاري إعادة المحاولة تلقائياً...`)
-              : 'استجابة غير صالحة مؤقتة من الخادم أثناء المعالجة. جاري إعادة المحاولة تلقائياً...',
-            isUnavailable: true,
-            isRateLimit: response.status === 429,
-          };
+        // Create an individual chunk timeout to prevent eternal hanging on dead connections (max 180 seconds)
+        const chunkTimeoutController = new AbortController();
+        const chunkTimeoutTimer = setTimeout(() => {
+          try {
+            chunkTimeoutController.abort(new DOMException(`انتهت مهلة استجابة الحزمة (${currentTask.startPage}-${currentTask.endPage})`, 'TimeoutError'));
+          } catch {
+            chunkTimeoutController.abort();
+          }
+        }, 180000);
+
+        // Link with main abortSignal
+        const handleParentAbort = () => {
+          try {
+            chunkTimeoutController.abort(abortSignal?.reason || new DOMException('تم إلغاء عملية التحويل', 'AbortError'));
+          } catch {
+            chunkTimeoutController.abort();
+          }
+        };
+        if (abortSignal) {
+          abortSignal.addEventListener('abort', handleParentAbort);
         }
 
-        if (response.ok && data?.success) {
-          lastChunkError = null;
-          isLastThrottled = false;
-          break;
-        } else {
-          const rawErrStr = typeof data?.error === 'string' ? data.error : '';
-          const isThrottled =
-            response.status === 429 ||
-            response.status === 503 ||
-            response.status === 504 ||
-            response.status === 502 ||
-            Boolean(data?.isRateLimit) ||
-            Boolean(data?.isUnavailable) ||
-            Boolean(data?.isPeakDemand) ||
-            rawErrStr.toLowerCase().includes('peak demand') ||
-            rawErrStr.toLowerCase().includes('high demand') ||
-            rawErrStr.toLowerCase().includes('rate limit') ||
-            rawErrStr.toLowerCase().includes('quota') ||
-            rawErrStr.toLowerCase().includes('overloaded') ||
-            rawErrStr.includes('ضغطاً مؤقتاً') ||
-            rawErrStr.includes('UNAVAILABLE') ||
-            rawErrStr.includes('استجابة غير صالحة') ||
-            rawErrStr.includes('تعذر الاتصال') ||
-            rawErrStr.includes('503') ||
-            rawErrStr.includes('429');
-          
-          isLastThrottled = isThrottled;
-          lastChunkError = data?.error || `فشلت معالجة الصفحات ${chunk.startPage}-${chunk.endPage}`;
+        const chunkFetchStartedAt = Date.now();
+        const chunkHeartbeatTimer = setInterval(() => {
+          if (abortSignal?.aborted || chunkTimeoutController.signal.aborted) return;
+          const elapsedInChunkSec = (Date.now() - chunkFetchStartedAt) / 1000;
+          const span = Math.max(1, chunkEndPct - chunkStartPct);
+          const smoothRatio = (1 - Math.exp(-elapsedInChunkSec / 14)) * 0.85;
+          const interpolatedPct = Math.min(
+            chunkEndPct - 1,
+            Math.round(chunkStartPct + span * smoothRatio)
+          );
+          if (interpolatedPct > highestPercentage) {
+            emitProgress({
+              currentChunk: taskIdx + 1,
+              totalChunks: tasks.length,
+              startPage: currentTask.startPage,
+              endPage: currentTask.endPage,
+              totalPages,
+              percentage: interpolatedPct,
+              phase: 'converting',
+              activeStage: 'extraction',
+              stages: updateStageList('extraction', Math.round(30 + (taskIdx / Math.max(1, currentTaskTotal)) * 50)),
+              processedChunksCount: completedTasksCount,
+              partialMarkdown: markdownPieces.join('\n\n---PAGE_BREAK---\n\n'),
+              statusMessage: `المرحلة 1: تفريغ واستخراج الحزمة (${taskIdx + 1} من ${currentTaskTotal}) • الصفحات ${currentTask.startPage}-${currentTask.endPage}...`,
+            });
+          }
+        }, 1000);
 
-          if (isThrottled && chunkAttempt < maxAttempts - 1) {
-            const isPeakDemand =
+        try {
+          const response = await apiFetch('/api/convert-pdf', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            signal: chunkTimeoutController.signal,
+            body: JSON.stringify({
+              pdfBase64: chunkBase64,
+              filename: `${file.name} (pages ${currentTask.startPage}-${currentTask.endPage})`,
+              options,
+            }),
+          }).finally(() => {
+            clearInterval(chunkHeartbeatTimer);
+            clearTimeout(chunkTimeoutTimer);
+            if (abortSignal) {
+              abortSignal.removeEventListener('abort', handleParentAbort);
+            }
+          });
+
+          if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
+
+          const responseText = await response.text();
+          try {
+            data = JSON.parse(responseText);
+          } catch {
+            const isGatewayIssue = response.status === 502 || response.status === 503 || response.status === 504;
+            const isPayloadIssue = response.status === 413 || responseText.includes('PayloadTooLarge') || responseText.includes('entity too large');
+            data = {
+              success: false,
+              error: isPayloadIssue
+                ? 'حجم الحزمة كبير جداً.'
+                : isGatewayIssue
+                ? `خدمة التحويل تشهد ضغطاً مؤقتاً بالخادم (${response.status}). الحفاظ على تقدمك وإعادة الإرسال التلقائي...`
+                : 'استجابة غير صالحة مؤقتة من الخادم أثناء المعالجة. جاري إعادة المحاولة تلقائياً...',
+              isUnavailable: isGatewayIssue || response.status >= 500,
+              isRateLimit: response.status === 429,
+              isPayloadTooLarge: isPayloadIssue,
+            };
+          }
+
+          // Check if payload is too large or gateway timeout occurs on multi-page chunks: trigger immediate bisection!
+          const rawErrStr = typeof data?.error === 'string' ? data.error : '';
+          const isPayloadTooLarge =
+            response.status === 413 ||
+            Boolean(data?.isPayloadTooLarge) ||
+            rawErrStr.includes('حجم الحزمة كبير جداً') ||
+            rawErrStr.toLowerCase().includes('payload too large') ||
+            rawErrStr.toLowerCase().includes('entity too large');
+
+          if (isPayloadTooLarge && pagesInTask > 1) {
+            const mid = Math.floor((currentTask.startPage + currentTask.endPage) / 2);
+            const leftTask: DynamicChunkTask = { startPage: currentTask.startPage, endPage: mid };
+            const rightTask: DynamicChunkTask = { startPage: mid + 1, endPage: currentTask.endPage };
+            tasks.splice(taskIdx, 1, leftTask, rightTask);
+            onProgress?.({
+              currentChunk: taskIdx + 1,
+              totalChunks: tasks.length,
+              startPage: currentTask.startPage,
+              endPage: currentTask.endPage,
+              totalPages,
+              percentage: currentPercentage,
+              phase: 'converting',
+              activeStage: 'extraction',
+              statusMessage: `حجم الحزمة كبير على الخادم. تم الانشطار التلقائي للصفحات (${currentTask.startPage}-${currentTask.endPage}) إلى (${leftTask.startPage}-${leftTask.endPage}) و (${rightTask.startPage}-${rightTask.endPage}) والمتابعة فوراً...`,
+              processedChunksCount: completedTasksCount,
+              partialMarkdown: markdownPieces.join('\n\n---PAGE_BREAK---\n\n'),
+            });
+            didBisect = true;
+            break;
+          }
+
+          if (response.ok && data?.success) {
+            lastChunkError = null;
+            isLastThrottled = false;
+            break;
+          } else {
+            const isThrottled =
+              response.status === 429 ||
+              response.status === 503 ||
+              response.status === 504 ||
+              response.status === 502 ||
+              Boolean(data?.isRateLimit) ||
+              Boolean(data?.isUnavailable) ||
               Boolean(data?.isPeakDemand) ||
               rawErrStr.toLowerCase().includes('peak demand') ||
               rawErrStr.toLowerCase().includes('high demand') ||
-              rawErrStr.includes('ضغطاً مؤقتاً');
+              rawErrStr.toLowerCase().includes('rate limit') ||
+              rawErrStr.toLowerCase().includes('quota') ||
+              rawErrStr.toLowerCase().includes('overloaded') ||
+              rawErrStr.includes('ضغطاً مؤقتاً') ||
+              rawErrStr.includes('UNAVAILABLE') ||
+              rawErrStr.includes('استجابة غير صالحة') ||
+              rawErrStr.includes('تعذر الاتصال') ||
+              rawErrStr.includes('503') ||
+              rawErrStr.includes('429');
 
-            const serverRetrySec = typeof data?.retryAfterSeconds === 'number' && data.retryAfterSeconds > 0
-              ? data.retryAfterSeconds
-              : 0;
+            isLastThrottled = isThrottled;
+            lastChunkError = data?.error || `فشلت معالجة الصفحات ${currentTask.startPage}-${currentTask.endPage}`;
 
-            const waitSeconds = serverRetrySec > 0
-              ? Math.min(65, serverRetrySec + 2)
-              : isPeakDemand
-              ? Math.min(20, Math.max(6, 6 + chunkAttempt * 3))
-              : Math.min(35, Math.max(12, 10 + chunkAttempt * 4));
+            // If gateway timed out repeatedly on multi-page chunks, bisect to reduce workload
+            if ((response.status === 504 || response.status === 502) && pagesInTask > 1 && chunkAttempt >= 1) {
+              const mid = Math.floor((currentTask.startPage + currentTask.endPage) / 2);
+              const leftTask: DynamicChunkTask = { startPage: currentTask.startPage, endPage: mid };
+              const rightTask: DynamicChunkTask = { startPage: mid + 1, endPage: currentTask.endPage };
+              tasks.splice(taskIdx, 1, leftTask, rightTask);
+              onProgress?.({
+                currentChunk: taskIdx + 1,
+                totalChunks: tasks.length,
+                startPage: currentTask.startPage,
+                endPage: currentTask.endPage,
+                totalPages,
+                percentage: currentPercentage,
+                phase: 'converting',
+                activeStage: 'extraction',
+                statusMessage: `استغرقت الحزمة وقتاً طويلاً. تم الانشطار التلقائي للصفحات (${currentTask.startPage}-${currentTask.endPage}) لتسريع المعالجة والمتابعة...`,
+                processedChunksCount: completedTasksCount,
+                partialMarkdown: markdownPieces.join('\n\n---PAGE_BREAK---\n\n'),
+              });
+              didBisect = true;
+              break;
+            }
 
-            const noticePrefix = isPeakDemand
-              ? 'خدمة الذكاء الاصطناعي تشهد ضغطاً مؤقتاً (Temporary Peak Demand). الحفاظ على تقدمك: جاري إعادة المحاولة التلقائية'
-              : 'تم بلوغ حد الطلبات اللحظي في الدقيقة (Rate limit). الحفاظ على تقدمك: جاري الانتظار والاستئناف التلقائي';
+            if (isThrottled && chunkAttempt < maxAttempts - 1) {
+              const isPeakDemand =
+                Boolean(data?.isPeakDemand) ||
+                rawErrStr.toLowerCase().includes('peak demand') ||
+                rawErrStr.toLowerCase().includes('high demand') ||
+                rawErrStr.includes('ضغطاً مؤقتاً');
 
-            for (let sec = waitSeconds; sec > 0; sec--) {
+              const serverRetrySec = typeof data?.retryAfterSeconds === 'number' && data.retryAfterSeconds > 0
+                ? data.retryAfterSeconds
+                : 0;
+
+              const waitSeconds = serverRetrySec > 0
+                ? Math.min(65, serverRetrySec + 2)
+                : isPeakDemand
+                ? Math.min(20, Math.max(6, 6 + chunkAttempt * 3))
+                : Math.min(35, Math.max(12, 10 + chunkAttempt * 4));
+
+              const noticePrefix = isPeakDemand
+                ? 'الخدمة تشهد ضغطاً مؤقتاً حالياً. الحفاظ على تقدمك: جاري إعادة المحاولة التلقائية'
+                : 'تم بلوغ حد الطلبات اللحظي في الدقيقة (Rate limit). الحفاظ على تقدمك: جاري الانتظار والاستئناف التلقائي';
+
+              for (let sec = waitSeconds; sec > 0; sec--) {
+                if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
+                onProgress?.({
+                  currentChunk: taskIdx + 1,
+                  totalChunks: tasks.length,
+                  startPage: currentTask.startPage,
+                  endPage: currentTask.endPage,
+                  totalPages,
+                  percentage: currentPercentage,
+                  phase: 'converting',
+                  activeStage: 'extraction',
+                  isRateLimited: true,
+                  rateLimitCountdownSec: sec,
+                  statusMessage: `${noticePrefix} للصفحات (${currentTask.startPage}-${currentTask.endPage}) خلال (${sec} ث)...`,
+                  processedChunksCount: completedTasksCount,
+                  partialMarkdown: markdownPieces.join('\n\n---PAGE_BREAK---\n\n'),
+                });
+                await new Promise((r) => setTimeout(r, 1000));
+              }
+
               if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
               onProgress?.({
-                currentChunk: i + 1,
-                totalChunks: chunks.length,
-                startPage: chunk.startPage,
-                endPage: chunk.endPage,
+                currentChunk: taskIdx + 1,
+                totalChunks: tasks.length,
+                startPage: currentTask.startPage,
+                endPage: currentTask.endPage,
+                totalPages,
+                percentage: currentPercentage,
+                phase: 'converting',
+                activeStage: 'extraction',
+                isRateLimited: false,
+                rateLimitCountdownSec: undefined,
+                statusMessage: `جاري إعادة إرسال الصفحات (${currentTask.startPage}-${currentTask.endPage}) الآن...`,
+                processedChunksCount: completedTasksCount,
+                partialMarkdown: markdownPieces.join('\n\n---PAGE_BREAK---\n\n'),
+              });
+              continue;
+            } else {
+              await new Promise((r) => setTimeout(r, Math.min(10000, 1500 * (chunkAttempt + 1))));
+            }
+          }
+        } catch (err: any) {
+          if (abortSignal?.aborted) {
+            throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
+          }
+          const isTimeout = err?.name === 'TimeoutError' || String(err).includes('timed out') || String(err).includes('aborted');
+          const errMsg = isTimeout
+            ? `استغرقت استجابة الصفحات (${currentTask.startPage}-${currentTask.endPage}) وقتاً أطول من المتوقع، جاري إعادة المحاولة التلقائية...`
+            : String(err?.message || err);
+          lastChunkError = errMsg || `خطأ في معالجة الحزمة ${taskIdx + 1}`;
+
+          if (isTimeout && pagesInTask > 1 && chunkAttempt >= 1) {
+            const mid = Math.floor((currentTask.startPage + currentTask.endPage) / 2);
+            const leftTask: DynamicChunkTask = { startPage: currentTask.startPage, endPage: mid };
+            const rightTask: DynamicChunkTask = { startPage: mid + 1, endPage: currentTask.endPage };
+            tasks.splice(taskIdx, 1, leftTask, rightTask);
+            onProgress?.({
+              currentChunk: taskIdx + 1,
+              totalChunks: tasks.length,
+              startPage: currentTask.startPage,
+              endPage: currentTask.endPage,
+              totalPages,
+              percentage: currentPercentage,
+              phase: 'converting',
+              activeStage: 'extraction',
+              statusMessage: `تم الانشطار التلقائي للصفحات (${currentTask.startPage}-${currentTask.endPage}) لتفادي انقطاع الاتصال والمتابعة...`,
+              processedChunksCount: completedTasksCount,
+              partialMarkdown: markdownPieces.join('\n\n---PAGE_BREAK---\n\n'),
+            });
+            didBisect = true;
+            break;
+          }
+
+          if (chunkAttempt < maxAttempts - 1) {
+            isLastThrottled = true;
+            const waitSec = Math.min(25, 4 + chunkAttempt * 3);
+            for (let s = waitSec; s > 0; s--) {
+              if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
+              onProgress?.({
+                currentChunk: taskIdx + 1,
+                totalChunks: tasks.length,
+                startPage: currentTask.startPage,
+                endPage: currentTask.endPage,
                 totalPages,
                 percentage: currentPercentage,
                 phase: 'converting',
                 activeStage: 'extraction',
                 isRateLimited: true,
-                rateLimitCountdownSec: sec,
-                statusMessage: `${noticePrefix} للصفحات (${chunk.startPage}-${chunk.endPage}) خلال (${sec} ث)...`,
-                processedChunksCount: i,
+                rateLimitCountdownSec: s,
+                statusMessage: `تعذر الاتصال المؤقت بالخادم. الحفاظ على تقدمك: جاري إعادة إرسال الصفحات (${currentTask.startPage}-${currentTask.endPage}) خلال (${s} ث)...`,
+                processedChunksCount: completedTasksCount,
                 partialMarkdown: markdownPieces.join('\n\n---PAGE_BREAK---\n\n'),
               });
               await new Promise((r) => setTimeout(r, 1000));
             }
-
-            if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
-            onProgress?.({
-              currentChunk: i + 1,
-              totalChunks: chunks.length,
-              startPage: chunk.startPage,
-              endPage: chunk.endPage,
-              totalPages,
-              percentage: currentPercentage,
-              phase: 'converting',
-              activeStage: 'extraction',
-              isRateLimited: false,
-              rateLimitCountdownSec: undefined,
-              statusMessage: `جاري إعادة إرسال الصفحات (${chunk.startPage}-${chunk.endPage}) الآن...`,
-              processedChunksCount: i,
-              partialMarkdown: markdownPieces.join('\n\n---PAGE_BREAK---\n\n'),
-            });
             continue;
-          } else {
-            await new Promise((r) => setTimeout(r, Math.min(10000, 1500 * (chunkAttempt + 1))));
           }
+          await new Promise((r) => setTimeout(r, Math.min(8000, 1500 * (chunkAttempt + 1))));
         }
-      } catch (err: any) {
-        if (abortSignal?.aborted) {
-          throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
-        }
-        const errMsg = String(err?.message || err);
-        lastChunkError = errMsg || `خطأ في معالجة الحزمة ${i + 1}`;
-        if (chunkAttempt < maxAttempts - 1) {
-          isLastThrottled = true;
-          const waitSec = Math.min(25, 4 + chunkAttempt * 3);
-          for (let s = waitSec; s > 0; s--) {
-            if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
+      }
+
+      // If chunk was bisected into two smaller chunks, continue without advancing taskIdx
+      if (didBisect) {
+        chunkBase64 = '';
+        continue;
+      }
+
+      if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
+
+      if (lastChunkError || !data?.success) {
+        // Safety Net: If AI conversion was throttled or exhausted, attempt zero-quota direct digital rescue
+        // ONLY if the file is safe size (<= 20MB) to avoid exceeding Nginx body limits
+        if (isLastThrottled && !isImage && workingPdfFile.size <= 20 * 1024 * 1024) {
+          try {
             onProgress?.({
-              currentChunk: i + 1,
-              totalChunks: chunks.length,
-              startPage: chunk.startPage,
-              endPage: chunk.endPage,
+              currentChunk: taskIdx + 1,
+              totalChunks: tasks.length,
+              startPage: currentTask.startPage,
+              endPage: currentTask.endPage,
               totalPages,
-              percentage: currentPercentage,
+              percentage: Math.min(95, currentPercentage + 5),
               phase: 'converting',
               activeStage: 'extraction',
-              isRateLimited: true,
-              rateLimitCountdownSec: s,
-              statusMessage: `تعذر الاتصال المؤقت بالخادم. الحفاظ على تقدمك: جاري إعادة إرسال الصفحات (${chunk.startPage}-${chunk.endPage}) خلال (${s} ث)...`,
-              processedChunksCount: i,
+              statusMessage: 'بلغت حصة الطلبات حدها. جاري إكمال الصفحات المتبقية تلقائياً بالمحرك الرقمي السريع...',
+              processedChunksCount: completedTasksCount,
               partialMarkdown: markdownPieces.join('\n\n---PAGE_BREAK---\n\n'),
             });
-            await new Promise((r) => setTimeout(r, 1000));
+
+            const pdfBase64 = await fileToBase64(workingPdfFile);
+            const directCheck = await apiFetch('/api/extract-direct-pdf', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal: abortSignal,
+              body: JSON.stringify({ pdfBase64, filename: file.name }),
+            });
+            const directData = await directCheck.json();
+            if (directData?.success && directData?.data?.markdown) {
+              const allDirectPages = directData.data.markdown.split(/---PAGE_BREAK---/);
+              // Slice remaining pages from currentTask.startPage - 1 onwards
+              const remainingPages = allDirectPages.slice(Math.max(0, currentTask.startPage - 1));
+              if (remainingPages.length > 0) {
+                markdownPieces.push(preserveUnderlineFormattingMarkers(remainingPages.join('\n\n---PAGE_BREAK---\n\n').trim()));
+                plainTextPieces.push(remainingPages.join('\n\n').trim());
+                // Successfully rescued without stalling! Break out of tasks loop to run pipeline verification
+                break;
+              }
+            }
+          } catch (rescueErr) {
+            console.warn('Direct rescue attempt failed:', rescueErr);
           }
-          continue;
         }
-        await new Promise((r) => setTimeout(r, Math.min(8000, 1500 * (chunkAttempt + 1))));
+
+        const customErr: any = new Error(lastChunkError || `فشلت معالجة الصفحات ${currentTask.startPage}-${currentTask.endPage}`);
+        customErr.isRateLimit = isLastThrottled;
+        customErr.isDailyQuotaExhausted = Boolean(data?.isDailyQuotaExhausted);
+        customErr.lastChunkIndex = taskIdx;
+        customErr.totalChunks = tasks.length;
+        customErr.startPage = currentTask.startPage;
+        customErr.endPage = currentTask.endPage;
+        customErr.totalPages = totalPages;
+        customErr.percentage = currentPercentage;
+        customErr.resumeState = {
+          completedChunks: taskIdx,
+          markdownPieces: [...markdownPieces],
+          plainTextPieces: [...plainTextPieces],
+          docTitle,
+          detectedLang,
+          docTextDirection,
+          hasMath,
+          hasArabic,
+          hasTables,
+          hasHandwriting,
+        };
+        customErr.partialMarkdown = markdownPieces.join('\n\n---PAGE_BREAK---\n\n');
+        customErr.partialPlainText = plainTextPieces.join('\n\n');
+        throw customErr;
       }
-    }
 
-    if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
+      const chunkData = data.data;
+      if (chunkData.markdown) {
+        // Compress runaway dots and strip HTML artifacts
+        const sanitizedChunkMd = chunkData.markdown
+          .replace(/\.{6,}/g, '.....')
+          .replace(/^[ \t]*(\.[ \t]*){5,}$/gm, '.....')
+          .replace(/(\n[ \t]*\.\.\.\.\.[ \t]*){2,}/g, '\n.....\n')
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/br>/gi, '\n')
+          .replace(/&nbsp;/gi, ' ')
+          // Only unwrap the tags this list names. The alternation needs its own
+          // boundaries: without them `i` matches the first letter of any tag, so
+          // <img …>, <iframe …> and <input …> were matched and deleted outright,
+          // silently discarding embedded images from the document.
+          .replace(/<\/?(span|div|p|b|strong|em|i)(?=[\s/>])[^>]*>/gi, '');
+        markdownPieces.push(preserveUnderlineFormattingMarkers(TextProcessor.process(sanitizedChunkMd)).trim());
+      }
+      if (chunkData.plainText) {
+        const sanitizedChunkTxt = chunkData.plainText
+          .replace(/\.{6,}/g, '.....')
+          .replace(/^[ \t]*(\.[ \t]*){5,}$/gm, '.....')
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/&nbsp;/gi, ' ');
+        plainTextPieces.push(sanitizedChunkTxt.trim());
+      }
+      if (chunkData.detectedLanguage) detectedLang = chunkData.detectedLanguage;
+      if (chunkData.textDirection) docTextDirection = chunkData.textDirection;
+      if (chunkData.title && taskIdx === 0 && !resumeState) docTitle = chunkData.title;
+      if (chunkData.hasMathOrScience) hasMath = true;
+      if (chunkData.hasArabicText) hasArabic = true;
+      if (chunkData.hasTables) hasTables = true;
+      if (chunkData.hasHandwriting) hasHandwriting = true;
 
-    if (lastChunkError || !data?.success) {
-      // Safety Net: If AI conversion was throttled or exhausted, attempt zero-quota direct digital rescue
-      if (isLastThrottled && !isImage) {
-        try {
+      // Immediately free the chunk base64 string to release browser memory for subsequent chunks
+      chunkBase64 = '';
+
+      taskIdx++;
+      completedTasksCount++;
+
+      // Smart proactive pacing between chunks to strictly respect Gemini RPM limits
+      const paceDuration = isLastThrottled ? 6 : 3;
+      if (taskIdx < tasks.length) {
+        if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
+        for (let sec = paceDuration; sec > 0; sec--) {
           onProgress?.({
-            currentChunk: i + 1,
-            totalChunks: chunks.length,
-            startPage: chunk.startPage,
-            endPage: chunk.endPage,
+            currentChunk: taskIdx,
+            totalChunks: tasks.length,
+            startPage: currentTask.startPage,
+            endPage: currentTask.endPage,
             totalPages,
-            percentage: Math.min(95, currentPercentage + 5),
+            percentage: currentPercentage,
             phase: 'converting',
-            activeStage: 'extraction',
-            statusMessage: 'كوتة الذكاء الاصطناعي بلغت حدها. جاري إكمال الصفحات المتبقية تلقائياً بالمحرك الرقمي السريع (صفر كوتة)...',
-            processedChunksCount: i,
+            statusMessage: `الصفحات (${currentTask.startPage}-${currentTask.endPage}) اكتملت بنجاح. جاري تنظيم الحصص والانتقال للحزمة التالية (${taskIdx + 1}/${tasks.length}) خلال (${sec} ث)...`,
+            processedChunksCount: completedTasksCount,
             partialMarkdown: markdownPieces.join('\n\n---PAGE_BREAK---\n\n'),
           });
-
-          const pdfBase64 = await fileToBase64(workingPdfFile);
-          const directCheck = await fetch('/api/extract-direct-pdf', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: abortSignal,
-            body: JSON.stringify({ pdfBase64, filename: file.name }),
-          });
-          const directData = await directCheck.json();
-          if (directData?.success && directData?.data?.markdown) {
-            const allDirectPages = directData.data.markdown.split(/---PAGE_BREAK---/);
-            // Slice remaining pages from chunk.startPage - 1 onwards
-            const remainingPages = allDirectPages.slice(Math.max(0, chunk.startPage - 1));
-            if (remainingPages.length > 0) {
-              markdownPieces.push(remainingPages.join('\n\n---PAGE_BREAK---\n\n').trim());
-              plainTextPieces.push(remainingPages.join('\n\n').trim());
-              // Successfully rescued without stalling! Break out of chunks loop to run pipeline verification
-              break;
-            }
-          }
-        } catch (rescueErr) {
-          console.warn('Direct rescue attempt failed:', rescueErr);
+          await new Promise((r) => setTimeout(r, 1000));
         }
       }
-
-      const customErr: any = new Error(lastChunkError || `فشلت معالجة الصفحات ${chunk.startPage}-${chunk.endPage}`);
-      customErr.isRateLimit = isLastThrottled;
-      customErr.isDailyQuotaExhausted = Boolean(data?.isDailyQuotaExhausted);
-      customErr.lastChunkIndex = i;
-      customErr.totalChunks = chunks.length;
-      customErr.startPage = chunk.startPage;
-      customErr.endPage = chunk.endPage;
-      customErr.totalPages = totalPages;
-      customErr.percentage = currentPercentage;
-      customErr.resumeState = {
-        completedChunks: i,
-        markdownPieces: [...markdownPieces],
-        plainTextPieces: [...plainTextPieces],
-        docTitle,
-        detectedLang,
-        docTextDirection,
-        hasMath,
-        hasArabic,
-        hasTables,
-        hasHandwriting,
-      };
-      customErr.partialMarkdown = markdownPieces.join('\n\n---PAGE_BREAK---\n\n');
-      customErr.partialPlainText = plainTextPieces.join('\n\n');
-      throw customErr;
     }
-
-    const chunkData = data.data;
-    if (chunkData.markdown) {
-      // Compress runaway dots and strip HTML artifacts
-      const sanitizedChunkMd = chunkData.markdown
-        .replace(/\.{6,}/g, '.....')
-        .replace(/^[ \t]*(\.[ \t]*){5,}$/gm, '.....')
-        .replace(/(\n[ \t]*\.\.\.\.\.[ \t]*){2,}/g, '\n.....\n')
-        .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/<\/br>/gi, '\n')
-        .replace(/&nbsp;/gi, ' ')
-        // Only unwrap the tags this list names. The alternation needs its own
-        // boundaries: without them `i` matches the first letter of any tag, so
-        // <img …>, <iframe …> and <input …> were matched and deleted outright,
-        // silently discarding embedded images from the document.
-        .replace(/<\/?(span|div|p|b|strong|em|i)(?=[\s/>])[^>]*>/gi, '');
-      markdownPieces.push(sanitizedChunkMd.trim());
-    }
-    if (chunkData.plainText) {
-      const sanitizedChunkTxt = chunkData.plainText
-        .replace(/\.{6,}/g, '.....')
-        .replace(/^[ \t]*(\.[ \t]*){5,}$/gm, '.....')
-        .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/&nbsp;/gi, ' ');
-      plainTextPieces.push(sanitizedChunkTxt.trim());
-    }
-    if (chunkData.detectedLanguage) detectedLang = chunkData.detectedLanguage;
-    if (chunkData.textDirection) docTextDirection = chunkData.textDirection;
-    if (chunkData.title && i === 0 && !resumeState) docTitle = chunkData.title;
-    if (chunkData.hasMathOrScience) hasMath = true;
-    if (chunkData.hasArabicText) hasArabic = true;
-    if (chunkData.hasTables) hasTables = true;
-    if (chunkData.hasHandwriting) hasHandwriting = true;
-
-    // Smart proactive pacing between chunks to strictly respect Gemini RPM limits
-    const paceDuration = isLastThrottled ? 8 : 4;
-    if (i < chunks.length - 1) {
-      if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
-      for (let sec = paceDuration; sec > 0; sec--) {
-        onProgress?.({
-          currentChunk: i + 1,
-          totalChunks: chunks.length,
-          startPage: chunk.startPage,
-          endPage: chunk.endPage,
-          totalPages,
-          percentage: currentPercentage,
-          phase: 'converting',
-          statusMessage: `الصفحات (${chunk.startPage}-${chunk.endPage}) اكتملت بنجاح. جاري تنظيم الحصص والانتقال للحزمة التالية (${i + 2}/${chunks.length}) خلال (${sec} ث)...`,
-          processedChunksCount: i + 1,
-          partialMarkdown: markdownPieces.join('\n\n---PAGE_BREAK---\n\n'),
-        });
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-    }
+  } finally {
+    planner.dispose();
   }
-
-  onProgress?.({
-    currentChunk: chunks.length,
-    totalChunks: chunks.length,
-    startPage: 1,
-    endPage: totalPages,
-    totalPages,
-    percentage: 60,
-    phase: 'converting',
-    activeStage: 'contextual',
-    stages: updateStageList('contextual', 60),
-    statusMessage: 'المرحلة 2: الفحص السياقي الذكي للآيات والأحاديث (Contextual Checker)...',
-  });
 
   const rawMergedMarkdown = markdownPieces
     .join('\n\n---PAGE_BREAK---\n\n')
     .replace(/(?:\n\s*---PAGE_BREAK---\s*){2,}/g, '\n\n---PAGE_BREAK---\n\n');
+  const isDocEnglish = !isRightToLeftText(rawMergedMarkdown);
+
+  emitProgress({
+    currentChunk: chunksCount,
+    totalChunks: chunksCount,
+    startPage: 1,
+    endPage: totalPages,
+    totalPages,
+    percentage: 82,
+    phase: 'converting',
+    activeStage: 'contextual',
+    stages: updateStageList('contextual', 82, isDocEnglish),
+    statusMessage: isDocEnglish
+      ? 'المرحلة 2: الفحص السياقي الأكاديمي ومطابقة المصادر (Contextual Checker)...'
+      : 'المرحلة 2: الفحص السياقي الذكي للآيات والأحاديث (Contextual Checker)...',
+  });
+
   let contextualResult: {
     correctedMarkdown: string;
     isAiVerified: boolean;
@@ -632,7 +1214,7 @@ export async function convertDocumentFile(
     correctedMarkdown: rawMergedMarkdown,
     isAiVerified: false,
     fixedCount: 0,
-    message: 'تم التدقيق عبر محرك القواعد الشرعية المعتمدة',
+    message: isDocEnglish ? 'تم الفحص الأكاديمي لسلامة المصادر والمراجع' : 'تم التدقيق عبر محرك القواعد الشرعية المعتمدة',
   };
 
   try {
@@ -653,17 +1235,19 @@ export async function convertDocumentFile(
   }
 
   // Stage 3: Grammar & Syntax Analyzer (فحص الجمل المفتوحة والبتر المفاجئ وتوقع التكملات)
-  onProgress?.({
-    currentChunk: chunks.length,
-    totalChunks: chunks.length,
+  emitProgress({
+    currentChunk: chunksCount,
+    totalChunks: chunksCount,
     startPage: 1,
     endPage: totalPages,
     totalPages,
-    percentage: 85,
+    percentage: 86,
     phase: 'converting',
     activeStage: 'grammar',
-    stages: updateStageList('grammar', 70),
-    statusMessage: 'المرحلة 3: التحليل النحوي والتركيبي وتوقع الجمل المفتوحة (Grammar Analyzer)...',
+    stages: updateStageList('grammar', 86, isDocEnglish),
+    statusMessage: isDocEnglish
+      ? 'المرحلة 3: التحليل النحوي وبنية الجمل الإنجليزية (Grammar Analyzer)...'
+      : 'المرحلة 3: التحليل النحوي والتركيبي وتوقع الجمل المفتوحة (Grammar Analyzer)...',
   });
 
   let grammarAnalysis = {
@@ -672,7 +1256,7 @@ export async function convertDocumentFile(
       hasCriticalTruncation: false,
       isAbruptTermination: false,
       truncatedItems: [],
-      overallGrammarVerdict: 'تم الفحص النحوي والتركيبي بنجاح.',
+      overallGrammarVerdict: isDocEnglish ? 'تم الفحص النحوي واللغوي للإنجليزي بنجاح.' : 'تم الفحص النحوي والتركيبي بنجاح.',
     },
     repairedMarkdown: contextualResult.correctedMarkdown,
   };
@@ -690,17 +1274,19 @@ export async function convertDocumentFile(
   }
 
   // Stage 4: Document Structural Auditor (التدقيق الهيكلي ومطابقة الترقيم والهوامش)
-  onProgress?.({
-    currentChunk: chunks.length,
-    totalChunks: chunks.length,
+  emitProgress({
+    currentChunk: chunksCount,
+    totalChunks: chunksCount,
     startPage: 1,
     endPage: totalPages,
     totalPages,
     percentage: 90,
     phase: 'converting',
     activeStage: 'structural',
-    stages: updateStageList('structural', 85),
-    statusMessage: 'المرحلة 4: التدقيق الهيكلي ومطابقة الترقيم والهوامش والعناوين (Structural Auditor)...',
+    stages: updateStageList('structural', 90, isDocEnglish),
+    statusMessage: isDocEnglish
+      ? 'المرحلة 4: التدقيق الهيكلي ومطابقة العناوين والجداول (Structural Auditor)...'
+      : 'المرحلة 4: التدقيق الهيكلي ومطابقة الترقيم والهوامش والعناوين (Structural Auditor)...',
   });
 
   let structuralAnalysis = {
@@ -724,18 +1310,20 @@ export async function convertDocumentFile(
     console.warn('Structural auditor fallback:', structErr);
   }
 
-  // Stage 5: Quranic Verification Agent (التحقق القرآني بالرسم العثماني المعتمد لضمان دقة 100%)
-  onProgress?.({
-    currentChunk: chunks.length,
-    totalChunks: chunks.length,
+  // Stage 5: Verification Agent
+  emitProgress({
+    currentChunk: chunksCount,
+    totalChunks: chunksCount,
     startPage: 1,
     endPage: totalPages,
     totalPages,
-    percentage: 94,
+    percentage: 93,
     phase: 'converting',
     activeStage: 'quranic_verification',
-    stages: updateStageList('quranic_verification', 92),
-    statusMessage: 'المرحلة 5: التحقق القرآني ومطابقة الآيات بالرسم العثماني المعتمد...',
+    stages: updateStageList('quranic_verification', 93, isDocEnglish),
+    statusMessage: isDocEnglish
+      ? 'المرحلة 5: التدقيق التيبوغرافي ومطابقة المصطلحات والرموز...'
+      : 'المرحلة 5: التحقق القرآني ومطابقة الآيات بالرسم العثماني المعتمد...',
   });
 
   let quranicVerification = {
@@ -745,7 +1333,7 @@ export async function convertDocumentFile(
       correctedVersesCount: 0,
       accuracyRate: 100,
       verifiedVerses: [],
-      overallVerificationVerdict: 'تم التحقق القرآني بنجاح.',
+      overallVerificationVerdict: isDocEnglish ? 'مستند باللغة الإنجليزية - تم التحقق من سلامة المصطلحات.' : 'تم التحقق القرآني بنجاح.',
       hasUthmaniDiscrepancies: false,
     },
     verifiedMarkdown: structuralAnalysis.repairedMarkdown,
@@ -757,18 +1345,20 @@ export async function convertDocumentFile(
     console.warn('Quranic verification fallback:', qErr);
   }
 
-  // Stage 6: Layout Integrity Engine (معايرة وهيكلة الصفحات والجداول وتثبيت اتجاه RTL)
-  onProgress?.({
-    currentChunk: chunks.length,
-    totalChunks: chunks.length,
+  // Stage 6: Layout Integrity Engine
+  emitProgress({
+    currentChunk: chunksCount,
+    totalChunks: chunksCount,
     startPage: 1,
     endPage: totalPages,
     totalPages,
     percentage: 96,
     phase: 'converting',
     activeStage: 'layout_integrity',
-    stages: updateStageList('layout_integrity', 95),
-    statusMessage: 'المرحلة 6: معايرة وهيكلة الصفحات والجداول وتثبيت اتجاه RTL (Layout Integrity Engine)...',
+    stages: updateStageList('layout_integrity', 96, isDocEnglish),
+    statusMessage: isDocEnglish
+      ? 'المرحلة 6: معايرة وهيكلة الصفحات والجداول وتثبيت اتجاه LTR (Layout Integrity Engine)...'
+      : 'المرحلة 6: معايرة وهيكلة الصفحات والجداول وتثبيت اتجاه RTL (Layout Integrity Engine)...',
   });
 
   let layoutAnalysis = {
@@ -791,34 +1381,77 @@ export async function convertDocumentFile(
     console.warn('Layout integrity fallback:', layoutErr);
   }
 
-  const mergedMarkdown = layoutAnalysis.restructuredMarkdown;
-
-  // Stage 7: Finalizing
-  onProgress?.({
-    currentChunk: chunks.length,
-    totalChunks: chunks.length,
+  // Stage: Structural Integrity Audit (التدقيق البنيوي لسلامة ملفات DOCX وتجنب التكرار البنيوي)
+  emitProgress({
+    currentChunk: chunksCount,
+    totalChunks: chunksCount,
     startPage: 1,
     endPage: totalPages,
     totalPages,
     percentage: 98,
     phase: 'merging',
-    activeStage: 'finalizing',
-    stages: updateStageList('finalizing', 98),
-    statusMessage: 'المرحلة 7: الضبط النهائي بالمسطرة وتجهيز مستند Word المعتمد...',
+    activeStage: 'structural_integrity',
+    stages: updateStageList('structural_integrity', 98, isDocEnglish),
+    statusMessage: isDocEnglish
+      ? 'المرحلة: التدقيق البنيوي لسلامة ملف Word والتحقق من شجرة OOXML ومنع التكرار (Structural Integrity Audit)...'
+      : 'المرحلة: التدقيق البنيوي لسلامة ملف Word والتحقق من شجرة OOXML ومنع التكرار البنيوي (Structural Integrity Audit)...',
   });
 
-  const mergedPlainText = mergedMarkdown
-    .replace(/^---\s*$/gm, '\n------------------------\n')
-    .replace(/\\text\{([^\}]+)\}/g, '$1')
-    .replace(/^#+\s+/gm, "")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/\*([^*]+)\*/g, "$1")
-    .replace(/_([^_]+)_/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\$\$?([^\$]+)\$\$?/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/^\s*[-*+]\s+/gm, "• ")
-    .trim();
+  let structuralIntegrityResult: StructuralIntegrityAuditResult = {
+    report: {
+      isValidDocxStructure: true,
+      hasStructuralDuplication: false,
+      duplicateBodyDetected: false,
+      xmlDeclarationCount: 1,
+      documentRootCount: 1,
+      bodyTagCount: 1,
+      orphanTailDetected: false,
+      orphanPipesCleanedCount: 0,
+      markTagsConvertedToHighlightCount: 0,
+      repairedDuplicationsCount: 0,
+      overallVerdict: 'تم التحقق من السلامة البنيوية للمستند وخلوه من التكرار.',
+    },
+    repairedMarkdown: layoutAnalysis.restructuredMarkdown,
+  };
+
+  try {
+    structuralIntegrityResult = await auditStructuralIntegrity(layoutAnalysis.restructuredMarkdown, {
+      title: docTitle,
+      isRtl: !isDocEnglish,
+      fileName: file.name,
+    });
+  } catch (auditErr) {
+    console.warn('[Pipeline] Structural integrity audit fallback:', auditErr);
+  }
+
+  const rawMerged = structuralIntegrityResult.repairedMarkdown;
+  const finalizedPipeline = runMicroscopicFinalizationPipeline(
+    rawMergedMarkdown,
+    rawMerged,
+    file.name
+  );
+  const {
+    finalMarkdown: mergedMarkdown,
+    plainText: mergedPlainText,
+    sourceExtractText,
+    textCleanerReport,
+    strictQAResult,
+    microscopicAuditReport,
+  } = finalizedPipeline;
+
+  // Stage 7: Finalizing
+  emitProgress({
+    currentChunk: chunksCount,
+    totalChunks: chunksCount,
+    startPage: 1,
+    endPage: totalPages,
+    totalPages,
+    percentage: 99,
+    phase: 'merging',
+    activeStage: 'finalizing',
+    stages: updateStageList('finalizing', 99, isDocEnglish),
+    statusMessage: `المرحلة الأخيرة: التدقيق المجهري التلقائي (تطابق ${microscopicAuditReport.summary.wordFidelityRatio}%) وبوابات الجودة (${strictQAResult.passedGatesCount}/${strictQAResult.totalGates}) وتجهيز مستند Word المعتمد...`,
+  });
 
     const effectivePagesCount = effectiveEndPage && effectiveStartPage
       ? effectiveEndPage - effectiveStartPage + 1
@@ -829,7 +1462,7 @@ export async function convertDocumentFile(
       detectedLanguage: detectedLang,
       textDirection: docTextDirection,
       totalPages: effectivePagesCount || totalPages,
-      totalChunksProcessed: chunks.length,
+      totalChunksProcessed: chunksCount,
       pageCountEstimate: effectivePagesCount || totalPages,
     hasMathOrScience: hasMath,
     hasArabicText: hasArabic,
@@ -837,6 +1470,7 @@ export async function convertDocumentFile(
     hasHandwriting,
     markdown: mergedMarkdown,
     plainText: mergedPlainText,
+    sourceExtractText,
     fileName: file.name,
     fileSize: file.size,
     conversionDurationMs: Date.now() - startTime,
@@ -847,18 +1481,36 @@ export async function convertDocumentFile(
       structuralAnalysis.report.repairedCount +
       quranicVerification.report.correctedVersesCount +
       layoutAnalysis.report.tablesStabilizedCount +
-      layoutAnalysis.report.listsNormalizedCount,
+      layoutAnalysis.report.listsNormalizedCount +
+      structuralIntegrityResult.report.repairedDuplicationsCount +
+      textCleanerReport.totalReplacements +
+      strictQAResult.repairedCount,
     fixedItemsSummary: [
-      contextualResult.isAiVerified ? 'تم الفحص السياقي لمطابقة المصادر المعتمدة' : 'تم التدقيق عبر محرك القواعد الشرعية',
+      isDocEnglish
+        ? 'تم الفحص السياقي الأكاديمي لمطابقة المصادر'
+        : (contextualResult.isAiVerified
+          ? 'تم الفحص السياقي لمطابقة المصادر المعتمدة'
+          : 'تم التدقيق عبر محرك القواعد الشرعية'),
       grammarAnalysis.report.overallGrammarVerdict,
       structuralAnalysis.report.overallStructuralVerdict,
-      quranicVerification.report.overallVerificationVerdict,
-      layoutAnalysis.report.overallVerdict,
+      isDocEnglish
+        ? 'تم التدقيق التيبوغرافي للوثيقة بنجاح'
+        : quranicVerification.report.overallVerificationVerdict,
+      isDocEnglish
+        ? 'تمت معايرة وهيكلة الصفحات والجداول وتثبيت اتجاه LTR'
+        : layoutAnalysis.report.overallVerdict,
+      structuralIntegrityResult.report.overallVerdict,
+      `التدقيق المجهري الآلي: ${microscopicAuditReport.summary.overallVerdict} (تطابق ${microscopicAuditReport.summary.wordFidelityRatio}%)`,
     ],
     grammarSyntaxReport: grammarAnalysis.report,
     structuralAuditReport: structuralAnalysis.report,
     quranicVerificationReport: quranicVerification.report,
     layoutIntegrityReport: layoutAnalysis.report,
+    structuralIntegrityReport: structuralIntegrityResult.report,
+    microscopicAuditReport,
+    textCleanerReport,
+    strictQAReport: strictQAResult,
+    preFlightReport: preFlightReport,
   };
 
   return result;

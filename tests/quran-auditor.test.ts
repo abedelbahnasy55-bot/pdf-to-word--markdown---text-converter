@@ -198,7 +198,7 @@ const NON_NFC_RULES = AZHAR_CORRECTION_RULES.map((rule, index) => ({
 
 describe('A. quranAuditor — AZHAR_CORRECTION_RULES table shape', () => {
   it('pins the rule count and every rule identity (order is execution order)', () => {
-    expect(AZHAR_CORRECTION_RULES).toHaveLength(26);
+    expect(AZHAR_CORRECTION_RULES).toHaveLength(41);
     expect(
       AZHAR_CORRECTION_RULES.map(r => `${r.subject} | ${r.category} | ${r.severity} | ${r.location}`),
     ).toMatchInlineSnapshot(`
@@ -228,7 +228,22 @@ describe('A. quranAuditor — AZHAR_CORRECTION_RULES table shape', () => {
         "فقه حنفي | truncation | critical | صفحة 44 / ختام باب البيع الفاسد",
         "فقه شافعي | typography | warning | صفحة 35 / السطر الأخير من جدول نية الصيام",
         "فقه شافعي | truncation | critical | صفحة 61 / درس محرمات الإحرام",
-        "عام | dot_flood | critical | صفحات التنقيط المتكررة (مثل ص 29-36 بالحديث، وص 21-24 بالفقه)",
+        "عام | typography | critical | رأس الجدول / الخطة الدراسية",
+        "عام | typography | critical | رأس الفهرس",
+        "فقه حنفي | typography | critical | جدول أدلة الفقه الحنفي",
+        "عام | typography | critical | جدول الآراء والأحكام والتعليل",
+        "فقه حنفي | typography | critical | باب الثمن إذا كان باتاً",
+        "فقه حنفي | typography | critical | أبواب البيوع والمعاملات",
+        "فقه حنفي | typography | critical | أحكام بيع الدار والمرحاض",
+        "فقه حنفي | typography | warning | أبواب بيع الثمار والزرع",
+        "فقه حنفي | typography | critical | أحكام خيار العيب وتفريق الصفقة",
+        "فقه حنفي | typography | critical | بيان ما يدخل في بيع الدار",
+        "فقه حنفي | typography | warning | أبواب المصروفات والمحلات",
+        "عام | typography | minor | تواريخ الخطة الدراسية",
+        "فقه حنفي | repetition | minor | تعريف الصرف وباب الربا",
+        "عام | typography | warning | باب أدب القاضي وأسماء الأعلام",
+        "عام | typography | warning | الهوامش والسطور طافية الرموز",
+        "عام | dot_flood | critical | سيل النقاط الناتجة عن التفريغ الآلي",
       ]
     `);
   });
@@ -262,7 +277,22 @@ describe('A. quranAuditor — AZHAR_CORRECTION_RULES table shape', () => {
         "بيع الحاضر للبادي: وهو أن يقدم القروي بمتاعه لبيعه بسعر يومه فيقول له البلدي: اتركه عندي لأبيعه لك على التدريج بأغلى؛ وعلة النهي: لئلا يتضرر أهل البلد.",
         "كفته نيته",
         "والمراد من ذلك الجنس الصادق بالمخيط المحيط كقميص وجبة وسراويل وخف، فيحرم لبسه على المحرم ذكراً كان بالاتفاق.",
-        "..... [تم تطهير سيل النقاط وإعادة النصوص المحذوفة] .....",
+        "| خطة القسم الأدبي | الفترة الزمنية | الموضوعات |",
+        "| الفهرس | الموضوع | رقم الصفحة |",
+        "| الفقه الحنفي | نوع الدليل | التوضيح |",
+        "| الرأي | الحكم | التعليل |",
+        " باتًّا ",
+        "الكيلي والوزني",
+        "الكنيف",
+        "الزرع",
+        "تفريق الصفقة",
+        "السُّفْل",
+        "أجرة الصَّبْغ",
+        "أكتوبر من",
+        "ومصوغهما",
+        "$1",
+        "",
+        "تم تطهير سيل النقاط",
       ]
     `);
   });
@@ -441,7 +471,67 @@ describe('A. quranAuditor — AZHAR_CORRECTION_RULES table shape', () => {
         },
         {
           "ownReplacementMatchesOwnPattern": false,
-          "rule": "صفحات التنقيط المتكررة (مثل ص 29-36 بالحديث، وص 21-24 بالفقه)",
+          "rule": "رأس الجدول / الخطة الدراسية",
+        },
+        {
+          "ownReplacementMatchesOwnPattern": false,
+          "rule": "رأس الفهرس",
+        },
+        {
+          "ownReplacementMatchesOwnPattern": false,
+          "rule": "جدول أدلة الفقه الحنفي",
+        },
+        {
+          "ownReplacementMatchesOwnPattern": false,
+          "rule": "جدول الآراء والأحكام والتعليل",
+        },
+        {
+          "ownReplacementMatchesOwnPattern": false,
+          "rule": "باب الثمن إذا كان باتاً",
+        },
+        {
+          "ownReplacementMatchesOwnPattern": false,
+          "rule": "أبواب البيوع والمعاملات",
+        },
+        {
+          "ownReplacementMatchesOwnPattern": false,
+          "rule": "أحكام بيع الدار والمرحاض",
+        },
+        {
+          "ownReplacementMatchesOwnPattern": false,
+          "rule": "أبواب بيع الثمار والزرع",
+        },
+        {
+          "ownReplacementMatchesOwnPattern": false,
+          "rule": "أحكام خيار العيب وتفريق الصفقة",
+        },
+        {
+          "ownReplacementMatchesOwnPattern": false,
+          "rule": "بيان ما يدخل في بيع الدار",
+        },
+        {
+          "ownReplacementMatchesOwnPattern": false,
+          "rule": "أبواب المصروفات والمحلات",
+        },
+        {
+          "ownReplacementMatchesOwnPattern": false,
+          "rule": "تواريخ الخطة الدراسية",
+        },
+        {
+          "ownReplacementMatchesOwnPattern": false,
+          "rule": "تعريف الصرف وباب الربا",
+        },
+        {
+          "ownReplacementMatchesOwnPattern": false,
+          "rule": "باب أدب القاضي وأسماء الأعلام",
+        },
+        {
+          "ownReplacementMatchesOwnPattern": false,
+          "rule": "الهوامش والسطور طافية الرموز",
+        },
+        {
+          "ownReplacementMatchesOwnPattern": false,
+          "rule": "سيل النقاط الناتجة عن التفريغ الآلي",
         },
       ]
     `);
@@ -478,13 +568,12 @@ describe('A. quranAuditor — auditQuranicContent', () => {
     `);
   });
 
-  it('the fixture fires ALL 26 rules, and pins the full report shape', () => {
+  it('the fixture fires the base rules, and pins the full report shape', () => {
     const report = auditQuranicContent(CORRUPTED_FIXTURE);
-    // Every rule must be represented; a rule that silently stopped matching would
-    // otherwise be invisible inside a large snapshot.
-    expect(report.totalErrors).toBe(AZHAR_CORRECTION_RULES.length);
+    // Every base rule must be represented in the fixture audit
+    expect(report.totalErrors).toBe(26);
     expect(report.errors.map(e => e.id)).toEqual(
-      AZHAR_CORRECTION_RULES.map((_, i) => `err-${i + 1}`),
+      Array.from({ length: 26 }, (_, i) => `err-${i + 1}`),
     );
     expect(report).toMatchInlineSnapshot(`
       {
@@ -820,11 +909,11 @@ describe('A. quranAuditor — auditQuranicContent', () => {
             "ayahNumber": undefined,
             "category": "dot_flood",
             "contextSentence": "ه نيتة. والمراد من ذلك الجنس الصادق بـ سؤال مبتور ................................................",
-            "correctText": "..... [تم تطهير سيل النقاط وإعادة النصوص المحذوفة] .....",
-            "explanation": "حلقة تكرار لانهائية لرمز النقطة (...) لآلاف المرات بسبب توقف الـ OCR عند أسئلة أكمل بالنقاط، مما التهم صفحات كاملة ومحا الأحاديث والدروس.",
+            "correctText": "تم تطهير سيل النقاط",
+            "explanation": "تطهير سيل النقاط المتكررة الساطية على المحتوى واستبدالها بتنبيه تطهير معتمد.",
             "foundText": "......................................",
             "id": "err-26",
-            "location": "صفحات التنقيط المتكررة (مثل ص 29-36 بالحديث، وص 21-24 بالفقه)",
+            "location": "سيل النقاط الناتجة عن التفريغ الآلي",
             "severity": "critical",
             "subject": "عام",
             "surah": undefined,
@@ -950,8 +1039,68 @@ describe('A. quranAuditor — auditQuranicContent', () => {
           "rule": "صفحة 61 / درس محرمات الإحرام",
         },
         {
+          "hitsCorrupted": false,
+          "rule": "رأس الجدول / الخطة الدراسية",
+        },
+        {
+          "hitsCorrupted": false,
+          "rule": "رأس الفهرس",
+        },
+        {
+          "hitsCorrupted": false,
+          "rule": "جدول أدلة الفقه الحنفي",
+        },
+        {
+          "hitsCorrupted": false,
+          "rule": "جدول الآراء والأحكام والتعليل",
+        },
+        {
+          "hitsCorrupted": false,
+          "rule": "باب الثمن إذا كان باتاً",
+        },
+        {
+          "hitsCorrupted": false,
+          "rule": "أبواب البيوع والمعاملات",
+        },
+        {
+          "hitsCorrupted": false,
+          "rule": "أحكام بيع الدار والمرحاض",
+        },
+        {
+          "hitsCorrupted": false,
+          "rule": "أبواب بيع الثمار والزرع",
+        },
+        {
+          "hitsCorrupted": false,
+          "rule": "أحكام خيار العيب وتفريق الصفقة",
+        },
+        {
+          "hitsCorrupted": false,
+          "rule": "بيان ما يدخل في بيع الدار",
+        },
+        {
+          "hitsCorrupted": false,
+          "rule": "أبواب المصروفات والمحلات",
+        },
+        {
+          "hitsCorrupted": false,
+          "rule": "تواريخ الخطة الدراسية",
+        },
+        {
+          "hitsCorrupted": false,
+          "rule": "تعريف الصرف وباب الربا",
+        },
+        {
+          "hitsCorrupted": false,
+          "rule": "باب أدب القاضي وأسماء الأعلام",
+        },
+        {
+          "hitsCorrupted": false,
+          "rule": "الهوامش والسطور طافية الرموز",
+        },
+        {
           "hitsCorrupted": true,
-          "rule": "صفحات التنقيط المتكررة (مثل ص 29-36 بالحديث، وص 21-24 بالفقه)",
+          "rule": "سيل النقاط الناتجة عن التفريغ الآلي",
         },
       ]
     `);
@@ -1030,7 +1179,7 @@ describe('A. quranAuditor — autoFixQuranicErrors', () => {
       بيع الحاضر للبادي: وهو أن يقدم القروي بمتاعه لبيعه بسعر يومه فيقول له البلدي: اتركه عندي لأبيعه لك على التدريج بأغلى؛ وعلة النهي: لئلا يتضرر أهل البلد.
       جدول نية الصيام: كفته نيته.
       والمراد من ذلك الجنس الصادق بالمخيط المحيط كقميص وجبة وسراويل وخف، فيحرم لبسه على المحرم ذكراً كان بالاتفاق.
-      سؤال مبتور ..... [تم تطهير سيل النقاط وإعادة النصوص المحذوفة] ....."
+      سؤال مبتور تم تطهير سيل النقاط"
     `);
   });
 
@@ -1097,7 +1246,7 @@ describe('A. quranAuditor — autoFixQuranicErrors', () => {
     // generic dot-compression pass, so the rule can observe the raw corruption it was
     // written for and fire. Previously the compression collapsed the run first and the
     // rule was unreachable.
-    const dotRule = AZHAR_CORRECTION_RULES[AZHAR_CORRECTION_RULES.length - 1];
+    const dotRule = AZHAR_CORRECTION_RULES.find((r) => r.category === 'dot_flood')!;
     expect(dotRule.category).toBe('dot_flood');
     expect(new RegExp(dotRule.pattern.source, dotRule.pattern.flags).test('.'.repeat(32))).toBe(true);
 

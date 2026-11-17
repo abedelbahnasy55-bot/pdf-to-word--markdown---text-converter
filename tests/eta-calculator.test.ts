@@ -774,3 +774,50 @@ describe('E. etaCalculator — DEAD BRANCH PROOF for "processing" and "pending"'
     `);
   });
 });
+
+describe('E. etaCalculator — calculateStableBatchEta (anti-spike & monotonic)', () => {
+  it('never spikes upward when active file progress pauses while waiting on an initial chunk', async () => {
+    const { calculateStableBatchEta } = await import('../src/utils/etaCalculator');
+    let state = null;
+    const etas: number[] = [];
+
+    // Simulate 0s -> 40s while a 1.5MB file is waiting on chunk 1 at 15% progress
+    for (let sec = 0; sec <= 40; sec += 2) {
+      const res = calculateStableBatchEta(
+        [{ size: 1_500_000, status: 'processing', progress: 15 }],
+        sec,
+        state
+      );
+      state = res.nextState;
+      etas.push(res.eta.estimatedSecondsRemaining);
+    }
+
+    // Verify strictly non-increasing ETA (no 15s -> 45s -> 90s spike!)
+    for (let i = 1; i < etas.length; i++) {
+      expect(etas[i]).toBeLessThanOrEqual(etas[i - 1]);
+    }
+    expect(etas[0]).toBeGreaterThanOrEqual(15);
+    expect(etas[etas.length - 1]).toBeGreaterThanOrEqual(4);
+  });
+
+  it('smoothly adjusts upward only when new files are dynamically added to the queue', async () => {
+    const { calculateStableBatchEta } = await import('../src/utils/etaCalculator');
+    const step1 = calculateStableBatchEta(
+      [{ size: 500_000, status: 'processing', progress: 40 }],
+      10,
+      null
+    );
+    const step2 = calculateStableBatchEta(
+      [
+        { size: 500_000, status: 'processing', progress: 45 },
+        { size: 1_000_000, status: 'pending' },
+      ],
+      11,
+      step1.nextState
+    );
+    expect(step2.eta.estimatedSecondsRemaining).toBeGreaterThan(
+      step1.eta.estimatedSecondsRemaining
+    );
+    expect(step2.eta.totalFiles).toBe(2);
+  });
+});

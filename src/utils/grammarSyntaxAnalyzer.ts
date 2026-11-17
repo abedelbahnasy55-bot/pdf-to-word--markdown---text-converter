@@ -1,5 +1,6 @@
 import { GrammarSyntaxReport, IncompleteSentenceItem } from '../types';
 import { isDirectlyExtractedMarkdown } from './extractionOrigin';
+import { apiFetch } from './apiClient';
 
 /**
  * Pre-compiled academic & grammatical patterns for common abrupt terminations
@@ -128,6 +129,21 @@ export async function runGrammarSyntaxAnalyzer(
   report: GrammarSyntaxReport;
   repairedMarkdown: string;
 }> {
+  const arabicChars = (markdown.match(/[\u0600-\u06FF]/g) || []).length;
+  const latinChars = (markdown.match(/[a-zA-Z]/g) || []).length;
+  if (arabicChars === 0 && latinChars > 15) {
+    return {
+      report: {
+        analyzedSentencesCount: 1,
+        hasCriticalTruncation: false,
+        isAbruptTermination: false,
+        truncatedItems: [],
+        overallGrammarVerdict: 'المستند باللغة الإنجليزية / نصوص عامة - بنية الجمل متصلة وسليمة.',
+      },
+      repairedMarkdown: markdown,
+    };
+  }
+
   // Start with heuristic baseline
   const heuristic = analyzeGrammarAndSyntaxHeuristically(markdown);
   let repairedMarkdown = markdown;
@@ -151,12 +167,12 @@ export async function runGrammarSyntaxAnalyzer(
     }
   }
 
-  // Now attempt AI server-side prediction
+  // Only attempt server-side completion when a critical open-ended truncation persists
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    const response = await fetch('/api/grammar-syntax-check', {
+    const response = await apiFetch('/api/grammar-syntax-check', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

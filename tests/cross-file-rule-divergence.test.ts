@@ -74,7 +74,7 @@ function emittedA(rule: AuditorRule): string {
 
 describe('C. source A — AZHAR_CORRECTION_RULES (src/utils/quranAuditor.ts)', () => {
   it('is imported directly; its size is pinned', () => {
-    expect(TABLE_A.length).toBe(26);
+    expect(TABLE_A.length).toBe(41);
   });
 
   it('A_TABLE: pattern + replacement for every rule', () => {
@@ -210,8 +210,83 @@ describe('C. source A — AZHAR_CORRECTION_RULES (src/utils/quranAuditor.ts)', (
         },
         {
           "flags": "g",
-          "pattern": "(?:\\.{10,}[ \\t]*\\n*){2,}|(?:\\.\\.\\.\\.\\.\\.\\.\\.\\.\\.\\.\\.\\.\\.\\.\\.\\.\\.\\.\\.)",
-          "replacement": "..... [تم تطهير سيل النقاط وإعادة النصوص المحذوفة] .....",
+          "pattern": "خطة[ \\t]*القسم[ \\t]*الأدبياالفترة[ \\t]*الزمنيةاالموضوعات",
+          "replacement": "| خطة القسم الأدبي | الفترة الزمنية | الموضوعات |",
+        },
+        {
+          "flags": "g",
+          "pattern": "الفهرساالموضوعارقم[ \\t]*الصفحة",
+          "replacement": "| الفهرس | الموضوع | رقم الصفحة |",
+        },
+        {
+          "flags": "g",
+          "pattern": "الفقه[ \\t]*الحنفيانوع[ \\t]*الدليلاالتوضيح",
+          "replacement": "| الفقه الحنفي | نوع الدليل | التوضيح |",
+        },
+        {
+          "flags": "g",
+          "pattern": "الرأياالحكماالتعليل",
+          "replacement": "| الرأي | الحكم | التعليل |",
+        },
+        {
+          "flags": "g",
+          "pattern": "(?:^|[^\\u0621-\\u064A])(?:بأنًا|بانًا|بأنّا|بانّا)(?:$|[^\\u0621-\\u064A])",
+          "replacement": " باتًّا ",
+        },
+        {
+          "flags": "g",
+          "pattern": "البيعي[ \\t]+والوزني",
+          "replacement": "الكيلي والوزني",
+        },
+        {
+          "flags": "g",
+          "pattern": "\\bالكتيف\\b",
+          "replacement": "الكنيف",
+        },
+        {
+          "flags": "g",
+          "pattern": "\\bالزعْر\\b|\\bالزعر\\b(?=[ \\t]+والثمار|[ \\t]+والزرع)",
+          "replacement": "الزرع",
+        },
+        {
+          "flags": "g",
+          "pattern": "تريق[ \\t]+الصفقة",
+          "replacement": "تفريق الصفقة",
+        },
+        {
+          "flags": "g",
+          "pattern": "\\bالسففل\\b",
+          "replacement": "السُّفْل",
+        },
+        {
+          "flags": "g",
+          "pattern": "أجرة[ \\t]+الصيغ",
+          "replacement": "أجرة الصَّبْغ",
+        },
+        {
+          "flags": "g",
+          "pattern": "أكتوبرامن",
+          "replacement": "أكتوبر من",
+        },
+        {
+          "flags": "g",
+          "pattern": "\\bومصوغهما[ \\t]+ومصوغهما\\b",
+          "replacement": "ومصوغهما",
+        },
+        {
+          "flags": "g",
+          "pattern": "([أ-ي\\s]+)\\s+شمخ\\b",
+          "replacement": "$1",
+        },
+        {
+          "flags": "g",
+          "pattern": "\\^?\\(?\\s*[٠-٩0-9]+\\s*\\)?\\s*شمخ",
+          "replacement": "",
+        },
+        {
+          "flags": "g",
+          "pattern": "(\\.{10,}[ \\t]*){2,}|\\.{30,}",
+          "replacement": "تم تطهير سيل النقاط",
         },
       ]
     `);
@@ -375,7 +450,7 @@ describe('C. source C — cleanMarkdown closure (server.ts)', () => {
         },
         {
           "flags": "gmi",
-          "pattern": "^[ \\t]*(الصفحة|Page)?[ \\t]*\\d+[ \\t]*$",
+          "pattern": "^[ \\t]*(?:الصفحة|Page)[ \\t]+\\d+[ \\t]*$|^[ \\t]*-[ \\t]*\\d+[ \\t]*-[ \\t]*$",
           "replacement": "",
         },
         {
@@ -440,6 +515,86 @@ describe('C. source C — cleanMarkdown closure (server.ts)', () => {
           "replacement": "
       .....
       ",
+        },
+        {
+          "flags": "g",
+          "pattern": "خطة[ \\t]*القسم[ \\t]*الأدبياالفترة[ \\t]*الزمنيةاالموضوعات",
+          "replacement": "| خطة القسم الأدبي | الفترة الزمنية | الموضوعات |",
+        },
+        {
+          "flags": "g",
+          "pattern": "خطة[ \\t]*القسم[ \\t]*العلمياالفترة[ \\t]*الزمنيةاالموضوعات",
+          "replacement": "| خطة القسم العلمي | الفترة الزمنية | الموضوعات |",
+        },
+        {
+          "flags": "g",
+          "pattern": "الفهرساالموضوعارقم[ \\t]*الصفحة",
+          "replacement": "| الفهرس | الموضوع | رقم الصفحة |",
+        },
+        {
+          "flags": "g",
+          "pattern": "الفقه[ \\t]*الحنفيانوع[ \\t]*الدليلاالتوضيح",
+          "replacement": "| الفقه الحنفي | نوع الدليل | التوضيح |",
+        },
+        {
+          "flags": "g",
+          "pattern": "الرأياالحكماالتعليل|الرأياالحكماالتوضيح",
+          "replacement": "| الرأي | الحكم | التعليل |",
+        },
+        {
+          "flags": "g",
+          "pattern": "(?:^|[^\\u0621-\\u064A])بأنًّا(?:$|[^\\u0621-\\u064A])",
+          "replacement": " باتًّا ",
+        },
+        {
+          "flags": "g",
+          "pattern": "البيعي[ \\t]+والوزني",
+          "replacement": "الكيلي والوزني",
+        },
+        {
+          "flags": "g",
+          "pattern": "(?:^|[^\\u0621-\\u064A])الكتيف(?:$|[^\\u0621-\\u064A])",
+          "replacement": " الكنيف ",
+        },
+        {
+          "flags": "g",
+          "pattern": "(?:^|[^\\u0621-\\u064A])الزعْر(?:$|[^\\u0621-\\u064A])",
+          "replacement": " الزرع ",
+        },
+        {
+          "flags": "g",
+          "pattern": "تريق[ \\t]+الصفقة",
+          "replacement": "تفريق الصفقة",
+        },
+        {
+          "flags": "g",
+          "pattern": "(?:^|[^\\u0621-\\u064A])السففل(?:$|[^\\u0621-\\u064A])",
+          "replacement": " السُّفْل ",
+        },
+        {
+          "flags": "g",
+          "pattern": "أجرة[ \\t]+الصيغ",
+          "replacement": "أجرة الصَّبْغ",
+        },
+        {
+          "flags": "g",
+          "pattern": "أكتوبرامن",
+          "replacement": "أكتوبر من",
+        },
+        {
+          "flags": "g",
+          "pattern": "ومصوغهما[ \\t]+ومصوغهما",
+          "replacement": "ومصوغهما",
+        },
+        {
+          "flags": "g",
+          "pattern": "\\bشمخ\\b|[ \\t]+شمخ(?=[ \\t،.\\n]|$)",
+          "replacement": "",
+        },
+        {
+          "flags": "g",
+          "pattern": "\\^\\(?[٠-٩1-9]+\\)?",
+          "replacement": "",
         },
         {
           "flags": "g",

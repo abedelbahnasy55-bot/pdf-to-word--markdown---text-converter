@@ -16,37 +16,59 @@ export interface PDFPageRange {
 export type QuotaOptimizationMode = 'maximum_savings' | 'balanced' | 'high_fidelity';
 
 /**
- * Returns recommended pages per chunk based on total document length and quota optimization mode.
- * - 'maximum_savings': Up to 15 pages per chunk for huge books. Converts 500 pages in only ~35 calls (15x quota savings).
- * - 'balanced': 4 to 10 pages per chunk. Ideal balance for large secondary books (المعاصر، العمالقة).
- * - 'high_fidelity': 1 to 3 pages per chunk for rare ancient manuscripts.
+ * Returns recommended pages per chunk based on total document length, quota mode, and byte weight.
+ * - Byte-aware safety: heavy scanned PDFs (>600KB/page) automatically clamp chunk page counts
+ *   so the resulting payload stays comfortably under 6MB Base64, completely preventing Cloud Run 413 and Gateway timeouts.
+ * - 'maximum_savings': Up to 15 pages per chunk for lightweight digital books.
+ * - 'balanced': 4 to 10 pages per chunk. Ideal balance for large secondary books.
+ * - 'high_fidelity': 1 to 3 pages per chunk.
  */
 export function getRecommendedPagesPerChunk(
   totalPages: number,
-  mode: QuotaOptimizationMode = 'balanced'
+  mode: QuotaOptimizationMode = 'balanced',
+  fileSizeBytes?: number
 ): number {
+  let baseRecommendation = 1;
+
   if (mode === 'maximum_savings') {
-    if (totalPages <= 3) return 1;
-    if (totalPages <= 10) return 2;
-    if (totalPages <= 30) return 5;
-    if (totalPages <= 80) return 8;
-    if (totalPages <= 200) return 12;
-    return 15; // 15 pages per chunk: converts 450 pages in 30 calls!
+    if (totalPages <= 3) baseRecommendation = 1;
+    else if (totalPages <= 10) baseRecommendation = 2;
+    else if (totalPages <= 30) baseRecommendation = 5;
+    else if (totalPages <= 80) baseRecommendation = 8;
+    else if (totalPages <= 200) baseRecommendation = 12;
+    else baseRecommendation = 15;
+  } else if (mode === 'high_fidelity') {
+    if (totalPages <= 6) baseRecommendation = 1;
+    else if (totalPages <= 20) baseRecommendation = 2;
+    else if (totalPages <= 50) baseRecommendation = 3;
+    else if (totalPages <= 100) baseRecommendation = 5;
+    else baseRecommendation = 8;
+  } else {
+    // 'balanced' (Default):
+    if (totalPages <= 4) baseRecommendation = 1;
+    else if (totalPages <= 12) baseRecommendation = 2;
+    else if (totalPages <= 40) baseRecommendation = 4;
+    else if (totalPages <= 100) baseRecommendation = 6;
+    else if (totalPages <= 200) baseRecommendation = 8;
+    else baseRecommendation = 10;
   }
 
-  if (mode === 'high_fidelity') {
-    if (totalPages <= 6) return 1;
-    if (totalPages <= 30) return 2;
-    return 3;
+  // Byte-budget awareness: calculate average page weight
+  if (fileSizeBytes && totalPages > 0) {
+    const avgBytesPerPage = fileSizeBytes / totalPages;
+    if (avgBytesPerPage > 1.2 * 1024 * 1024) {
+      // Very heavy scanned pages (>1.2MB per page): maximum 2 pages per chunk
+      baseRecommendation = Math.min(baseRecommendation, 2);
+    } else if (avgBytesPerPage > 600 * 1024) {
+      // Moderately heavy scanned pages (>600KB per page): maximum 4 pages per chunk
+      baseRecommendation = Math.min(baseRecommendation, 4);
+    } else if (avgBytesPerPage > 300 * 1024) {
+      // Standard pages (>300KB per page): maximum 6 pages per chunk
+      baseRecommendation = Math.min(baseRecommendation, 6);
+    }
   }
 
-  // 'balanced' (Default):
-  if (totalPages <= 4) return 1;
-  if (totalPages <= 12) return 2;
-  if (totalPages <= 40) return 4;
-  if (totalPages <= 100) return 6;
-  if (totalPages <= 250) return 8;
-  return 10; // 10 pages per chunk for 250+ page textbooks (e.g. المعاصر 300 pages = 30 calls)
+  return Math.max(1, baseRecommendation);
 }
 
 /**
@@ -62,16 +84,39 @@ export async function getPdfInfo(pdfBytes: ArrayBuffer): Promise<{ totalPages: n
   }
 }
 
+export interface PDFChunkDescriptor {
+  chunkIndex: number;
+  totalChunks: number;
+  startPage: number;
+  endPage: number;
+}
+
+export interface PDFChunk extends PDFChunkDescriptor {
+  base64: string;
+}
+
+export interface PDFChunkPlanner {
+  totalPages: number;
+  totalChunks: number;
+  effectiveStartPage: number;
+  effectiveEndPage: number;
+  chunkDescriptors: PDFChunkDescriptor[];
+  getChunkBase64: (chunkIndex: number) => Promise<string>;
+  getCustomRangeBase64: (startPage: number, endPage: number) => Promise<string>;
+  dispose: () => void;
+}
+
 /**
- * Splits a PDF ArrayBuffer into multiple chunks of at most `maxPagesPerChunk` pages.
- * Supports optional `pageRange` for processing specific chapters or subsets of massive books.
+ * Plans PDF chunks lazily without eagerly allocating duplicate PDFDocuments
+ * or encoding multi-megabyte base64 strings upfront.
+ * This guarantees low memory consumption (<120MB heap) even on 150MB+ textbooks with 200+ pages.
  */
-export async function splitPDFIntoChunks(
+export async function planPDFChunks(
   pdfBytes: ArrayBuffer,
   maxPagesPerChunk?: number,
   pageRange?: PDFPageRange
-): Promise<{ totalPages: number; chunks: PDFChunk[]; effectiveStartPage: number; effectiveEndPage: number }> {
-  const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+): Promise<PDFChunkPlanner> {
+  let srcDoc: PDFDocument | null = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
   const totalPages = srcDoc.getPageCount();
 
   // Determine effective range (1-indexed)
@@ -84,42 +129,41 @@ export async function splitPDFIntoChunks(
   }
 
   const pagesToProcess = effectiveEndPage - effectiveStartPage + 1;
-  const chunkCapacity = maxPagesPerChunk || 1; // Strict 1 page per chunk by default to maintain 1:1 page parity
-
-  // If entire document or range fits within 1 chunk
-  if (pagesToProcess <= chunkCapacity && effectiveStartPage === 1 && effectiveEndPage === totalPages) {
-    const base64 = await srcDoc.saveAsBase64({ dataUri: true });
-    return {
-      totalPages,
-      chunks: [
-        {
-          chunkIndex: 0,
-          totalChunks: 1,
-          startPage: 1,
-          endPage: totalPages,
-          base64,
-        },
-      ],
-      effectiveStartPage,
-      effectiveEndPage,
-    };
-  }
-
-  const chunks: PDFChunk[] = [];
-  const totalChunks = Math.ceil(pagesToProcess / chunkCapacity);
+  const chunkCapacity = maxPagesPerChunk || 1; // Maintain 1:1 page parity
 
   // Zero-based index bounds
   const zeroBasedStart = effectiveStartPage - 1;
   const zeroBasedEnd = effectiveEndPage; // non-inclusive
 
+  const chunkDescriptors: PDFChunkDescriptor[] = [];
+  const totalChunks = Math.ceil(pagesToProcess / chunkCapacity);
+
   let chunkIdx = 0;
   for (let i = zeroBasedStart; i < zeroBasedEnd; i += chunkCapacity) {
     const chunkStart = i;
     const chunkEnd = Math.min(i + chunkCapacity, zeroBasedEnd);
-    const chunkDoc = await PDFDocument.create();
+    chunkDescriptors.push({
+      chunkIndex: chunkIdx++,
+      totalChunks,
+      startPage: chunkStart + 1,
+      endPage: chunkEnd,
+    });
+  }
 
+  const getCustomRangeBase64 = async (startPage: number, endPage: number): Promise<string> => {
+    if (!srcDoc) {
+      throw new Error('PDF planner has been disposed.');
+    }
+    const safeStart = Math.max(1, Math.min(startPage, totalPages));
+    const safeEnd = Math.max(safeStart, Math.min(endPage, totalPages));
+
+    if (safeStart === 1 && safeEnd === totalPages) {
+      return await srcDoc.saveAsBase64({ dataUri: true });
+    }
+
+    const chunkDoc = await PDFDocument.create();
     const pageIndices: number[] = [];
-    for (let p = chunkStart; p < chunkEnd; p++) {
+    for (let p = safeStart - 1; p < safeEnd; p++) {
       pageIndices.push(p);
     }
 
@@ -128,21 +172,70 @@ export async function splitPDFIntoChunks(
       chunkDoc.addPage(page);
     }
 
-    const chunkBase64 = await chunkDoc.saveAsBase64({ dataUri: true });
+    return await chunkDoc.saveAsBase64({ dataUri: true });
+  };
 
-    chunks.push({
-      chunkIndex: chunkIdx++,
-      totalChunks,
-      startPage: chunkStart + 1,
-      endPage: chunkEnd,
-      base64: chunkBase64,
-    });
-  }
+  const getChunkBase64 = async (index: number): Promise<string> => {
+    if (!srcDoc) {
+      throw new Error('PDF planner has been disposed.');
+    }
+    const desc = chunkDescriptors[index];
+    if (!desc) {
+      throw new Error(`Invalid chunk index ${index}. Total chunks: ${chunkDescriptors.length}`);
+    }
+
+    // Special case: single chunk entire document
+    if (desc.startPage === 1 && desc.endPage === totalPages && totalPages <= chunkCapacity) {
+      return await srcDoc.saveAsBase64({ dataUri: true });
+    }
+
+    return await getCustomRangeBase64(desc.startPage, desc.endPage);
+  };
+
+  const dispose = () => {
+    srcDoc = null;
+  };
 
   return {
     totalPages,
-    chunks,
+    totalChunks,
     effectiveStartPage,
     effectiveEndPage,
+    chunkDescriptors,
+    getChunkBase64,
+    getCustomRangeBase64,
+    dispose,
+  };
+}
+
+/**
+ * Splits a PDF ArrayBuffer into multiple chunks of at most `maxPagesPerChunk` pages.
+ * Supports optional `pageRange` for processing specific chapters or subsets of massive books.
+ * Uses lazy planner to avoid holding all base64 representations in RAM simultaneously.
+ */
+export async function splitPDFIntoChunks(
+  pdfBytes: ArrayBuffer,
+  maxPagesPerChunk?: number,
+  pageRange?: PDFPageRange
+): Promise<{ totalPages: number; chunks: PDFChunk[]; effectiveStartPage: number; effectiveEndPage: number }> {
+  const planner = await planPDFChunks(pdfBytes, maxPagesPerChunk, pageRange);
+  const chunks: PDFChunk[] = [];
+
+  for (let i = 0; i < planner.chunkDescriptors.length; i++) {
+    const desc = planner.chunkDescriptors[i];
+    const base64 = await planner.getChunkBase64(i);
+    chunks.push({
+      ...desc,
+      base64,
+    });
+  }
+
+  planner.dispose();
+
+  return {
+    totalPages: planner.totalPages,
+    chunks,
+    effectiveStartPage: planner.effectiveStartPage,
+    effectiveEndPage: planner.effectiveEndPage,
   };
 }

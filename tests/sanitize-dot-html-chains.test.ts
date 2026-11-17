@@ -129,6 +129,25 @@ describe('A. provenance + shape of each sanitization copy', () => {
       .replace(/\\.{6,}/g, '.....')
       .replace(/^[ \\t]*(\\.[ \\t]*){5,}$/gm, '.....')
       .replace(/(\\n[ \\t]*\\.\\.\\.\\.\\.[ \\t]*){2,}/g, '\\n.....\\n')
+      // Table header column splitting & glued 'ا' artifact repair
+      .replace(/خطة[ \\t]*القسم[ \\t]*الأدبياالفترة[ \\t]*الزمنيةاالموضوعات/g, '| خطة القسم الأدبي | الفترة الزمنية | الموضوعات |')
+      .replace(/خطة[ \\t]*القسم[ \\t]*العلمياالفترة[ \\t]*الزمنيةاالموضوعات/g, '| خطة القسم العلمي | الفترة الزمنية | الموضوعات |')
+      .replace(/الفهرساالموضوعارقم[ \\t]*الصفحة/g, '| الفهرس | الموضوع | رقم الصفحة |')
+      .replace(/الفقه[ \\t]*الحنفيانوع[ \\t]*الدليلاالتوضيح/g, '| الفقه الحنفي | نوع الدليل | التوضيح |')
+      .replace(/الرأياالحكماالتعليل|الرأياالحكماالتوضيح/g, '| الرأي | الحكم | التعليل |')
+      // Fiqh Hanafi & Azhar curriculum typos
+      .replace(/(?:^|[^\\u0621-\\u064A])بأنًّا(?:$|[^\\u0621-\\u064A])/g, ' باتًّا ')
+      .replace(/البيعي[ \\t]+والوزني/g, 'الكيلي والوزني')
+      .replace(/(?:^|[^\\u0621-\\u064A])الكتيف(?:$|[^\\u0621-\\u064A])/g, ' الكنيف ')
+      .replace(/(?:^|[^\\u0621-\\u064A])الزعْر(?:$|[^\\u0621-\\u064A])/g, ' الزرع ')
+      .replace(/تريق[ \\t]+الصفقة/g, 'تفريق الصفقة')
+      .replace(/(?:^|[^\\u0621-\\u064A])السففل(?:$|[^\\u0621-\\u064A])/g, ' السُّفْل ')
+      .replace(/أجرة[ \\t]+الصيغ/g, 'أجرة الصَّبْغ')
+      .replace(/أكتوبرامن/g, 'أكتوبر من')
+      .replace(/ومصوغهما[ \\t]+ومصوغهما/g, 'ومصوغهما')
+      // Scanner footnote noise removal ("شمخ" and broken superscript footnotes)
+      .replace(/\\bشمخ\\b|[ \\t]+شمخ(?=[ \\t،.\\n]|$)/g, '')
+      .replace(/\\^\\(?[٠-٩1-9]+\\)?/g, '')
       // Fix phrase repetitions in tables
       .replace(/وعن[ \\t]+لبن[ \\t]+في[ \\t]+ضرع[،,\\s]+وعن[ \\t]+لبن[ \\t]+في[ \\t]+ضرع/g, 'وعن لبن في ضرع')
       // Fix Hadith typos & omissions
@@ -149,7 +168,7 @@ describe('A. provenance + shape of each sanitization copy', () => {
       .replace(/فَصُحْقًا/g, 'فَسُحْقًا')
       .replace(/﴿{2,}/g, '﴿')
       .replace(/﴾{2,}/g, '﴾');",
-        "steps": 19,
+        "steps": 35,
       }
     `);
   });
@@ -841,12 +860,12 @@ describe('A. whole-fixture output per copy', () => {
 
       - **﴿مِن تَفَاوُتٍ﴾** تصحيح شائع والصواب *مِن تَفَاوُتٍ*.
       - نص برمجي: \`code_sample = "تفاوت"\`.
-      - معادلة: $E = mc^2$ و $a^2 + b^2 = c^2$.
+      - معادلة: $E = mc$ و $a + b = c$.
       - رابط: [المصحف](https://quran.com) للمراجعة.
 
       $$مِدَاد$$
 
-      [^1]
+      []
 
       ### تمرين
 
@@ -1013,10 +1032,10 @@ describe('A. whole-fixture output per copy', () => {
 
       - **bold item** and *italic item*.
       - Inline code: \`const x = 1;\`.
-      - Formula: $E = mc^2$ and $$a^2 + b^2 = c^2$$.
+      - Formula: $E = mc$ and $$a + b = c$$.
       - Link: [Spec](https://example.com/spec).
 
-      [^1]: A footnote that belongs at the bottom.
+      []: A footnote that belongs at the bottom.
 
       ### Exercise
 
@@ -1055,6 +1074,16 @@ describe('A. whole-fixture output per copy', () => {
           "a1": "- **مَن تَقُوتُ** تصحيح شائع والصواب *مِن تَفَاوُتٍ*.",
           "a4": "- **﴿مِن تَفَاوُتٍ﴾** تصحيح شائع والصواب *مِن تَفَاوُتٍ*.",
           "i": 12,
+        },
+        {
+          "a1": "- معادلة: $E = mc^2$ و $a^2 + b^2 = c^2$.",
+          "a4": "- معادلة: $E = mc$ و $a + b = c$.",
+          "i": 14,
+        },
+        {
+          "a1": "[^1]",
+          "a4": "[]",
+          "i": 19,
         },
         {
           "a1": "راوية ابن ماجه والنساء الرجال.",

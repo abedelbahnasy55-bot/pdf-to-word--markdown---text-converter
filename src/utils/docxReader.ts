@@ -183,9 +183,22 @@ function parseParagraphElement(p: Element, footnotesMap: Record<string, string>)
     const child = runs[i] as Element;
     if (child.nodeName === 'w:r') {
       const rPr = child.getElementsByTagName('w:rPr')[0];
-      const isBold = Boolean(rPr?.getElementsByTagName('w:b')[0]);
-      const isItalic = Boolean(rPr?.getElementsByTagName('w:i')[0]);
-      
+      const bEl = rPr?.getElementsByTagName('w:b')[0];
+      const iEl = rPr?.getElementsByTagName('w:i')[0];
+      const uEl = rPr?.getElementsByTagName('w:u')[0];
+      const strikeEl = rPr?.getElementsByTagName('w:strike')[0];
+      const vertEl = rPr?.getElementsByTagName('w:vertAlign')[0];
+
+      const isBold = Boolean(bEl && bEl.getAttribute('w:val') !== '0' && bEl.getAttribute('w:val') !== 'false');
+      const isItalic = Boolean(iEl && iEl.getAttribute('w:val') !== '0' && iEl.getAttribute('w:val') !== 'false');
+      const uVal = uEl?.getAttribute('w:val')?.toLowerCase();
+      const isUnderline = Boolean(uEl && uVal !== 'none' && uVal !== 'false' && uVal !== '0');
+      const strikeVal = strikeEl?.getAttribute('w:val')?.toLowerCase();
+      const isStrike = Boolean(strikeEl && strikeVal !== 'false' && strikeVal !== '0');
+      const vertVal = vertEl?.getAttribute('w:val')?.toLowerCase();
+      const isSuperscript = vertVal === 'superscript';
+      const isSubscript = vertVal === 'subscript';
+
       // Check for page break in run: both standard <w:br w:type="page"/> and Word's <w:lastRenderedPageBreak/>
       const brElements = child.getElementsByTagName('w:br');
       for (let b = 0; b < brElements.length; b++) {
@@ -217,12 +230,25 @@ function parseParagraphElement(p: Element, footnotesMap: Record<string, string>)
       text += runText;
 
       let formattedRun = runText;
-      if (isBold && isItalic && runText.trim()) {
-        formattedRun = `***${runText}***`;
-      } else if (isBold && runText.trim()) {
-        formattedRun = `**${runText}**`;
-      } else if (isItalic && runText.trim()) {
-        formattedRun = `*${runText}*`;
+      if (runText.trim()) {
+        if (isBold && isItalic) {
+          formattedRun = `***${formattedRun}***`;
+        } else if (isBold) {
+          formattedRun = `**${formattedRun}**`;
+        } else if (isItalic) {
+          formattedRun = `*${formattedRun}*`;
+        }
+        if (isUnderline) {
+          formattedRun = `<u>${formattedRun}</u>`;
+        }
+        if (isStrike) {
+          formattedRun = `~~${formattedRun}~~`;
+        }
+        if (isSuperscript) {
+          formattedRun = `<sup>${formattedRun}</sup>`;
+        } else if (isSubscript) {
+          formattedRun = `<sub>${formattedRun}</sub>`;
+        }
       }
 
       mdText += formattedRun;

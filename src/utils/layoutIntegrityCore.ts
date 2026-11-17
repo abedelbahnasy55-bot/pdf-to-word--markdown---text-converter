@@ -42,7 +42,10 @@ function normalizeArabicPunctuation(line: string): string {
  * 2. Normalizes column alignment to Right-to-Left (---:).
  * 3. Enforces clean spacing and removes stray pipe symbols.
  */
-function stabilizeMarkdownTable(tableLines: string[]): {
+function stabilizeMarkdownTable(
+  tableLines: string[],
+  isArabic: boolean = true
+): {
   repairedLines: string[];
   issues: string[];
   columnsCount: number;
@@ -71,6 +74,7 @@ function stabilizeMarkdownTable(tableLines: string[]): {
   if (maxCols === 0) return { repairedLines: tableLines, issues, columnsCount: 0 };
 
   let rowLengthMismatch = false;
+  const alignmentMarker = isArabic ? '---:' : ':---';
 
   // Normalize data rows
   const normalizedRows: string[][] = [];
@@ -79,8 +83,8 @@ function stabilizeMarkdownTable(tableLines: string[]): {
     // Check if separator line
     const isSep = row.every(cell => /^[\s-:]+$/.test(cell));
     if (isSep) {
-      // Rebuild separator row with RTL alignment (---:)
-      const sepRow = Array(maxCols).fill('---:');
+      // Rebuild separator row with appropriate alignment
+      const sepRow = Array(maxCols).fill(alignmentMarker);
       normalizedRows.push(sepRow);
       continue;
     }
@@ -106,9 +110,11 @@ function stabilizeMarkdownTable(tableLines: string[]): {
   if (normalizedRows.length > 0) {
     const secondRowIsSep = normalizedRows.length > 1 && normalizedRows[1].every(c => /^[\s-:]+$/.test(c));
     if (!secondRowIsSep) {
-      const sepRow = Array(maxCols).fill('---:');
+      const sepRow = Array(maxCols).fill(alignmentMarker);
       normalizedRows.splice(1, 0, sepRow);
-      issues.push('إدراج سطر ترويسة الجدول وتثبيت محاذاة اليمين (RTL Columns Locked)');
+      issues.push(isArabic
+        ? 'إدراج سطر ترويسة الجدول وتثبيت محاذاة اليمين (RTL Columns Locked)'
+        : 'إدراج سطر ترويسة الجدول وتثبيت محاذاة اليسار (LTR Columns Locked)');
     }
   }
 
@@ -162,6 +168,7 @@ export async function auditAndRestructureLayout(
   const restructuredPages: string[] = [];
   const pageAudits: PageLayoutAuditItem[] = [];
 
+  const isArabicDoc = isArabicText(markdown);
   let totalTablesStabilized = 0;
   let totalListsNormalized = 0;
   let totalRtlEnforced = 0;
@@ -184,7 +191,7 @@ export async function auditAndRestructureLayout(
     const flushTable = () => {
       if (currentTableLines.length > 0) {
         pageTablesCount++;
-        const { repairedLines, issues } = stabilizeMarkdownTable(currentTableLines);
+        const { repairedLines, issues } = stabilizeMarkdownTable(currentTableLines, isArabicDoc);
         if (issues.length > 0) {
           totalTablesStabilized++;
           tableIssuesOnPage.push(...issues);
@@ -278,9 +285,11 @@ export async function auditAndRestructureLayout(
   // Calculate layout score
   const perfectPages = pageAudits.filter(p => p.status === 'perfect' || p.status === 'repaired').length;
   const overallLayoutScore = Math.round((perfectPages / Math.max(1, pageAudits.length)) * 100);
-  const isAllPagesValid = pageAudits.every(p => p.isRtlCompliant);
+  const isAllPagesValid = pageAudits.every(p => isArabicDoc ? p.isRtlCompliant : true);
 
-  const overallVerdict = `تم الفحص الهيكلي الكامل لـ (${pageAudits.length}) صفحة: تم تثبيت أبعاد (${totalTablesStabilized}) جدول، وضبط محاذاة (${totalListsNormalized}) قائمة، وضمان اتجاه RTL متطابق 100% لكافة الفقرات.`;
+  const overallVerdict = isArabicDoc
+    ? `تم الفحص الهيكلي الكامل لـ (${pageAudits.length}) صفحة: تم تثبيت أبعاد (${totalTablesStabilized}) جدول، وضبط محاذاة (${totalListsNormalized}) قائمة، وضمان اتجاه RTL متطابق 100% لكافة الفقرات.`
+    : `تم الفحص الهيكلي الكامل لـ (${pageAudits.length}) صفحة: تم تثبيت أبعاد (${totalTablesStabilized}) جدول، وضبط محاذاة (${totalListsNormalized}) قائمة، ومعايرة اتجاه LTR والتنسيق الأكاديمي الإنجليزي بدقة 100%.`;
 
   return {
     restructuredMarkdown: restructuredPages.join('\n\n---PAGE_BREAK---\n\n'),

@@ -21,6 +21,7 @@ const ALL_STAGE_IDS: ProcessingStageId[] = [
   'structural',
   'quranic_verification',
   'layout_integrity',
+  'structural_integrity',
   'finalizing',
 ];
 
@@ -33,13 +34,14 @@ const IN_PROGRESS_DEFAULTS: Record<ProcessingStageId, number> = {
   structural: 85,
   quranic_verification: 90,
   layout_integrity: 95,
+  structural_integrity: 96,
   finalizing: 98,
 };
 
 describe('D. pipelineStages — createInitialStages', () => {
-  it('the type union and the emitted stage list are the same eight ids, in order', () => {
+  it('the type union and the emitted stage list are the same nine ids, in order', () => {
     expect(createInitialStages().map(s => s.id)).toEqual(ALL_STAGE_IDS);
-    expect(createInitialStages()).toHaveLength(8);
+    expect(createInitialStages()).toHaveLength(9);
   });
 
   it('the default active stage is "extraction" (pipelineStages.ts:3)', () => {
@@ -109,6 +111,13 @@ describe('D. pipelineStages — createInitialStages', () => {
               "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
             },
             {
+              "id": "structural_integrity",
+              "progress": 0,
+              "status": "pending",
+              "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+              "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
+            },
+            {
               "id": "finalizing",
               "progress": 0,
               "status": "pending",
@@ -168,6 +177,13 @@ describe('D. pipelineStages — createInitialStages', () => {
               "status": "pending",
               "subtitle": "فحص هيكلية كل صفحة وتثبيت أبعاد الجداول والقوائم لضمان اتجاه RTL متطابق 100%",
               "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
+            },
+            {
+              "id": "structural_integrity",
+              "progress": 0,
+              "status": "pending",
+              "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+              "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
             },
             {
               "id": "finalizing",
@@ -231,6 +247,13 @@ describe('D. pipelineStages — createInitialStages', () => {
               "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
             },
             {
+              "id": "structural_integrity",
+              "progress": 0,
+              "status": "pending",
+              "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+              "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
+            },
+            {
               "id": "finalizing",
               "progress": 0,
               "status": "pending",
@@ -290,6 +313,13 @@ describe('D. pipelineStages — createInitialStages', () => {
               "status": "pending",
               "subtitle": "فحص هيكلية كل صفحة وتثبيت أبعاد الجداول والقوائم لضمان اتجاه RTL متطابق 100%",
               "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
+            },
+            {
+              "id": "structural_integrity",
+              "progress": 0,
+              "status": "pending",
+              "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+              "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
             },
             {
               "id": "finalizing",
@@ -353,6 +383,13 @@ describe('D. pipelineStages — createInitialStages', () => {
               "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
             },
             {
+              "id": "structural_integrity",
+              "progress": 0,
+              "status": "pending",
+              "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+              "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
+            },
+            {
               "id": "finalizing",
               "progress": 0,
               "status": "pending",
@@ -412,6 +449,13 @@ describe('D. pipelineStages — createInitialStages', () => {
               "status": "pending",
               "subtitle": "فحص هيكلية كل صفحة وتثبيت أبعاد الجداول والقوائم لضمان اتجاه RTL متطابق 100%",
               "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
+            },
+            {
+              "id": "structural_integrity",
+              "progress": 0,
+              "status": "pending",
+              "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+              "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
             },
             {
               "id": "finalizing",
@@ -475,6 +519,81 @@ describe('D. pipelineStages — createInitialStages', () => {
               "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
             },
             {
+              "id": "structural_integrity",
+              "progress": 0,
+              "status": "pending",
+              "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+              "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
+            },
+            {
+              "id": "finalizing",
+              "progress": 0,
+              "status": "pending",
+              "subtitle": "تطهير الفراغات وتوليد مستند Word (.docx) محقق 100%",
+              "title": "الإخراج والضبط النهائي بالمسطرة",
+            },
+          ],
+        },
+        {
+          "activeStage": "structural_integrity",
+          "stages": [
+            {
+              "id": "image_denoise",
+              "progress": 100,
+              "status": "completed",
+              "subtitle": "تنقية التشويش، إزالة التحبيب ومعالجة بهتان الوثائق القديمة لتعزيز دقة التعرف",
+              "title": "تحسين الصور المشوشة (De-noise)",
+            },
+            {
+              "id": "extraction",
+              "progress": 100,
+              "status": "completed",
+              "subtitle": "تفريغ النصوص والجداول والرموز بدقة عالية",
+              "title": "استخراج وقراءة المحتوى والجداول",
+            },
+            {
+              "id": "contextual",
+              "progress": 100,
+              "status": "completed",
+              "subtitle": "مطابقة نصوص ورسم المصحف الشريف وضبط متون كتب الحديث الستة",
+              "title": "الفحص السياقي للآيات والأحاديث (Contextual Checker)",
+            },
+            {
+              "id": "grammar",
+              "progress": 100,
+              "status": "completed",
+              "subtitle": "كشف الجمل المفتوحة والبتر المفاجئ وتوقع التكملات الأكاديمية",
+              "title": "التحليل النحوي والتركيبي (Grammar Analyzer)",
+            },
+            {
+              "id": "structural",
+              "progress": 100,
+              "status": "completed",
+              "subtitle": "فحص وضبط تسلسل العناوين وفصل الهوامش وترتيب الترقيم الهرمي",
+              "title": "التدقيق الهيكلي ومطابقة الترقيم والهوامش (Structural Auditor)",
+            },
+            {
+              "id": "quranic_verification",
+              "progress": 100,
+              "status": "completed",
+              "subtitle": "مطابقة الآيات القرآنية مع المصحف الشريف بالرسم العثماني المعتمد لضمان دقة 100%",
+              "title": "التحقق القرآني بالرسم العثماني",
+            },
+            {
+              "id": "layout_integrity",
+              "progress": 100,
+              "status": "completed",
+              "subtitle": "فحص هيكلية كل صفحة وتثبيت أبعاد الجداول والقوائم لضمان اتجاه RTL متطابق 100%",
+              "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
+            },
+            {
+              "id": "structural_integrity",
+              "progress": 96,
+              "status": "in_progress",
+              "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+              "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
+            },
+            {
               "id": "finalizing",
               "progress": 0,
               "status": "pending",
@@ -536,6 +655,13 @@ describe('D. pipelineStages — createInitialStages', () => {
               "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
             },
             {
+              "id": "structural_integrity",
+              "progress": 100,
+              "status": "completed",
+              "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+              "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
+            },
+            {
               "id": "finalizing",
               "progress": 98,
               "status": "in_progress",
@@ -591,6 +717,11 @@ describe('D. pipelineStages — createInitialStages', () => {
           "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
         },
         {
+          "id": "structural_integrity",
+          "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+          "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
+        },
+        {
           "id": "finalizing",
           "subtitle": "تطهير الفراغات وتوليد مستند Word (.docx) محقق 100%",
           "title": "الإخراج والضبط النهائي بالمسطرة",
@@ -622,6 +753,7 @@ describe('D. pipelineStages — createInitialStages', () => {
             "structural",
             "quranic_verification",
             "layout_integrity",
+            "structural_integrity",
             "finalizing",
           ],
         },
@@ -639,6 +771,7 @@ describe('D. pipelineStages — createInitialStages', () => {
             "structural",
             "quranic_verification",
             "layout_integrity",
+            "structural_integrity",
             "finalizing",
           ],
         },
@@ -656,6 +789,7 @@ describe('D. pipelineStages — createInitialStages', () => {
             "structural",
             "quranic_verification",
             "layout_integrity",
+            "structural_integrity",
             "finalizing",
           ],
         },
@@ -673,6 +807,7 @@ describe('D. pipelineStages — createInitialStages', () => {
             "structural",
             "quranic_verification",
             "layout_integrity",
+            "structural_integrity",
             "finalizing",
           ],
         },
@@ -690,6 +825,7 @@ describe('D. pipelineStages — createInitialStages', () => {
           "pending": [
             "quranic_verification",
             "layout_integrity",
+            "structural_integrity",
             "finalizing",
           ],
         },
@@ -707,6 +843,7 @@ describe('D. pipelineStages — createInitialStages', () => {
           ],
           "pending": [
             "layout_integrity",
+            "structural_integrity",
             "finalizing",
           ],
         },
@@ -724,6 +861,25 @@ describe('D. pipelineStages — createInitialStages', () => {
             "layout_integrity",
           ],
           "pending": [
+            "structural_integrity",
+            "finalizing",
+          ],
+        },
+        {
+          "active": "structural_integrity",
+          "completed": [
+            "image_denoise",
+            "extraction",
+            "contextual",
+            "grammar",
+            "structural",
+            "quranic_verification",
+            "layout_integrity",
+          ],
+          "inProgress": [
+            "structural_integrity",
+          ],
+          "pending": [
             "finalizing",
           ],
         },
@@ -737,6 +893,7 @@ describe('D. pipelineStages — createInitialStages', () => {
             "structural",
             "quranic_verification",
             "layout_integrity",
+            "structural_integrity",
           ],
           "inProgress": [
             "finalizing",
@@ -765,6 +922,7 @@ describe('D. pipelineStages — createInitialStages', () => {
             "structural=0",
             "quranic_verification=0",
             "layout_integrity=0",
+            "structural_integrity=0",
             "finalizing=0",
           ],
         },
@@ -778,6 +936,7 @@ describe('D. pipelineStages — createInitialStages', () => {
             "structural=0",
             "quranic_verification=0",
             "layout_integrity=0",
+            "structural_integrity=0",
             "finalizing=0",
           ],
         },
@@ -791,6 +950,7 @@ describe('D. pipelineStages — createInitialStages', () => {
             "structural=0",
             "quranic_verification=0",
             "layout_integrity=0",
+            "structural_integrity=0",
             "finalizing=0",
           ],
         },
@@ -804,6 +964,7 @@ describe('D. pipelineStages — createInitialStages', () => {
             "structural=0",
             "quranic_verification=0",
             "layout_integrity=0",
+            "structural_integrity=0",
             "finalizing=0",
           ],
         },
@@ -817,6 +978,7 @@ describe('D. pipelineStages — createInitialStages', () => {
             "structural=85",
             "quranic_verification=0",
             "layout_integrity=0",
+            "structural_integrity=0",
             "finalizing=0",
           ],
         },
@@ -830,6 +992,7 @@ describe('D. pipelineStages — createInitialStages', () => {
             "structural=100",
             "quranic_verification=90",
             "layout_integrity=0",
+            "structural_integrity=0",
             "finalizing=0",
           ],
         },
@@ -843,6 +1006,21 @@ describe('D. pipelineStages — createInitialStages', () => {
             "structural=100",
             "quranic_verification=100",
             "layout_integrity=95",
+            "structural_integrity=0",
+            "finalizing=0",
+          ],
+        },
+        {
+          "active": "structural_integrity",
+          "progress": [
+            "image_denoise=100",
+            "extraction=100",
+            "contextual=100",
+            "grammar=100",
+            "structural=100",
+            "quranic_verification=100",
+            "layout_integrity=100",
+            "structural_integrity=96",
             "finalizing=0",
           ],
         },
@@ -856,6 +1034,7 @@ describe('D. pipelineStages — createInitialStages', () => {
             "structural=100",
             "quranic_verification=100",
             "layout_integrity=100",
+            "structural_integrity=100",
             "finalizing=98",
           ],
         },
@@ -868,8 +1047,8 @@ describe('D. pipelineStages — createInitialStages', () => {
     // getStatus is never called with the unknown id. PINNED, NOT FIXED: a typo in a caller's
     // ProcessingStageId produces a UI with nothing running and nothing completed.
     const bogus = createInitialStages('not_a_stage' as ProcessingStageId);
-    expect(bogus.map(s => s.status)).toEqual(Array(8).fill('pending'));
-    expect(bogus.map(s => s.progress)).toEqual(Array(8).fill(0));
+    expect(bogus.map(s => s.status)).toEqual(Array(ALL_STAGE_IDS.length).fill('pending'));
+    expect(bogus.map(s => s.progress)).toEqual(Array(ALL_STAGE_IDS.length).fill(0));
   });
 });
 
@@ -930,6 +1109,13 @@ describe('D. pipelineStages — updateStageList', () => {
               "status": "pending",
               "subtitle": "فحص هيكلية كل صفحة وتثبيت أبعاد الجداول والقوائم لضمان اتجاه RTL متطابق 100%",
               "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
+            },
+            {
+              "id": "structural_integrity",
+              "progress": 0,
+              "status": "pending",
+              "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+              "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
             },
             {
               "id": "finalizing",
@@ -993,6 +1179,13 @@ describe('D. pipelineStages — updateStageList', () => {
               "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
             },
             {
+              "id": "structural_integrity",
+              "progress": 0,
+              "status": "pending",
+              "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+              "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
+            },
+            {
               "id": "finalizing",
               "progress": 0,
               "status": "pending",
@@ -1052,6 +1245,13 @@ describe('D. pipelineStages — updateStageList', () => {
               "status": "pending",
               "subtitle": "فحص هيكلية كل صفحة وتثبيت أبعاد الجداول والقوائم لضمان اتجاه RTL متطابق 100%",
               "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
+            },
+            {
+              "id": "structural_integrity",
+              "progress": 0,
+              "status": "pending",
+              "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+              "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
             },
             {
               "id": "finalizing",
@@ -1115,6 +1315,13 @@ describe('D. pipelineStages — updateStageList', () => {
               "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
             },
             {
+              "id": "structural_integrity",
+              "progress": 0,
+              "status": "pending",
+              "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+              "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
+            },
+            {
               "id": "finalizing",
               "progress": 0,
               "status": "pending",
@@ -1174,6 +1381,13 @@ describe('D. pipelineStages — updateStageList', () => {
               "status": "pending",
               "subtitle": "فحص هيكلية كل صفحة وتثبيت أبعاد الجداول والقوائم لضمان اتجاه RTL متطابق 100%",
               "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
+            },
+            {
+              "id": "structural_integrity",
+              "progress": 0,
+              "status": "pending",
+              "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+              "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
             },
             {
               "id": "finalizing",
@@ -1237,6 +1451,13 @@ describe('D. pipelineStages — updateStageList', () => {
               "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
             },
             {
+              "id": "structural_integrity",
+              "progress": 0,
+              "status": "pending",
+              "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+              "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
+            },
+            {
               "id": "finalizing",
               "progress": 0,
               "status": "pending",
@@ -1296,6 +1517,81 @@ describe('D. pipelineStages — updateStageList', () => {
               "status": "in_progress",
               "subtitle": "فحص هيكلية كل صفحة وتثبيت أبعاد الجداول والقوائم لضمان اتجاه RTL متطابق 100%",
               "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
+            },
+            {
+              "id": "structural_integrity",
+              "progress": 0,
+              "status": "pending",
+              "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+              "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
+            },
+            {
+              "id": "finalizing",
+              "progress": 0,
+              "status": "pending",
+              "subtitle": "تطهير الفراغات وتوليد مستند Word (.docx) محقق 100%",
+              "title": "الإخراج والضبط النهائي بالمسطرة",
+            },
+          ],
+        },
+        {
+          "activeStage": "structural_integrity",
+          "stages": [
+            {
+              "id": "image_denoise",
+              "progress": 100,
+              "status": "completed",
+              "subtitle": "تنقية التشويش، إزالة التحبيب ومعالجة بهتان الوثائق القديمة لتعزيز دقة التعرف",
+              "title": "تحسين الصور المشوشة (De-noise)",
+            },
+            {
+              "id": "extraction",
+              "progress": 100,
+              "status": "completed",
+              "subtitle": "تفريغ النصوص والجداول والرموز بدقة عالية",
+              "title": "استخراج وقراءة المحتوى والجداول",
+            },
+            {
+              "id": "contextual",
+              "progress": 100,
+              "status": "completed",
+              "subtitle": "مطابقة نصوص ورسم المصحف الشريف وضبط متون كتب الحديث الستة",
+              "title": "الفحص السياقي للآيات والأحاديث (Contextual Checker)",
+            },
+            {
+              "id": "grammar",
+              "progress": 100,
+              "status": "completed",
+              "subtitle": "كشف الجمل المفتوحة والبتر المفاجئ وتوقع التكملات الأكاديمية",
+              "title": "التحليل النحوي والتركيبي (Grammar Analyzer)",
+            },
+            {
+              "id": "structural",
+              "progress": 100,
+              "status": "completed",
+              "subtitle": "فحص وضبط تسلسل العناوين وفصل الهوامش وترتيب الترقيم الهرمي",
+              "title": "التدقيق الهيكلي ومطابقة الترقيم والهوامش (Structural Auditor)",
+            },
+            {
+              "id": "quranic_verification",
+              "progress": 100,
+              "status": "completed",
+              "subtitle": "مطابقة الآيات القرآنية مع المصحف الشريف بالرسم العثماني المعتمد لضمان دقة 100%",
+              "title": "التحقق القرآني بالرسم العثماني",
+            },
+            {
+              "id": "layout_integrity",
+              "progress": 100,
+              "status": "completed",
+              "subtitle": "فحص هيكلية كل صفحة وتثبيت أبعاد الجداول والقوائم لضمان اتجاه RTL متطابق 100%",
+              "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
+            },
+            {
+              "id": "structural_integrity",
+              "progress": 60,
+              "status": "in_progress",
+              "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+              "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
             },
             {
               "id": "finalizing",
@@ -1359,6 +1655,13 @@ describe('D. pipelineStages — updateStageList', () => {
               "title": "معايرة وهيكلة الصفحات والجداول (Layout Integrity Engine)",
             },
             {
+              "id": "structural_integrity",
+              "progress": 100,
+              "status": "completed",
+              "subtitle": "فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل",
+              "title": "التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)",
+            },
+            {
               "id": "finalizing",
               "progress": 60,
               "status": "in_progress",
@@ -1401,6 +1704,7 @@ describe('D. pipelineStages — updateStageList', () => {
             "structural:pending:0",
             "quranic_verification:pending:0",
             "layout_integrity:pending:0",
+            "structural_integrity:pending:0",
             "finalizing:pending:0",
           ],
         },
@@ -1414,6 +1718,7 @@ describe('D. pipelineStages — updateStageList', () => {
             "structural:pending:0",
             "quranic_verification:pending:0",
             "layout_integrity:pending:0",
+            "structural_integrity:pending:0",
             "finalizing:pending:0",
           ],
         },
@@ -1427,6 +1732,7 @@ describe('D. pipelineStages — updateStageList', () => {
             "structural:pending:0",
             "quranic_verification:pending:0",
             "layout_integrity:pending:0",
+            "structural_integrity:pending:0",
             "finalizing:pending:0",
           ],
         },
@@ -1440,6 +1746,7 @@ describe('D. pipelineStages — updateStageList', () => {
             "structural:pending:0",
             "quranic_verification:pending:0",
             "layout_integrity:pending:0",
+            "structural_integrity:pending:0",
             "finalizing:pending:0",
           ],
         },
@@ -1453,6 +1760,7 @@ describe('D. pipelineStages — updateStageList', () => {
             "structural:pending:0",
             "quranic_verification:pending:0",
             "layout_integrity:pending:0",
+            "structural_integrity:pending:0",
             "finalizing:pending:0",
           ],
         },
@@ -1466,6 +1774,7 @@ describe('D. pipelineStages — updateStageList', () => {
             "structural:in_progress:85",
             "quranic_verification:pending:0",
             "layout_integrity:pending:0",
+            "structural_integrity:pending:0",
             "finalizing:pending:0",
           ],
         },
@@ -1479,6 +1788,7 @@ describe('D. pipelineStages — updateStageList', () => {
             "structural:completed:100",
             "quranic_verification:in_progress:92",
             "layout_integrity:pending:0",
+            "structural_integrity:pending:0",
             "finalizing:pending:0",
           ],
         },
@@ -1492,6 +1802,7 @@ describe('D. pipelineStages — updateStageList', () => {
             "structural:completed:100",
             "quranic_verification:completed:100",
             "layout_integrity:in_progress:95",
+            "structural_integrity:pending:0",
             "finalizing:pending:0",
           ],
         },
@@ -1505,6 +1816,7 @@ describe('D. pipelineStages — updateStageList', () => {
             "structural:completed:100",
             "quranic_verification:completed:100",
             "layout_integrity:completed:100",
+            "structural_integrity:completed:100",
             "finalizing:in_progress:98",
           ],
         },
@@ -1562,6 +1874,13 @@ describe('D. pipelineStages — StageStatus shape', () => {
     const keysOf = (s: StageStatus) => Object.keys(s).sort();
     expect(createInitialStages('grammar').map(keysOf)).toMatchInlineSnapshot(`
       [
+        [
+          "id",
+          "progress",
+          "status",
+          "subtitle",
+          "title",
+        ],
         [
           "id",
           "progress",

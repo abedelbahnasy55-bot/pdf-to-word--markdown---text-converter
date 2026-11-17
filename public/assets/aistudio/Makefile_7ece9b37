@@ -1,0 +1,17 @@
+PYTHON ?= python3
+SKILL_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+
+.PHONY: test inspect demo clean
+
+test:
+	PYTHON=$(PYTHON) bash "$(SKILL_DIR)tests/run_tests.sh"
+
+inspect:
+	@test -n "$(PDF)" || (echo "usage: make inspect PDF=book.pdf" && exit 2)
+	$(PYTHON) "$(SKILL_DIR)scripts/pdf_inspect.py" "$(PDF)"
+
+demo:
+	$(PYTHON) "$(SKILL_DIR)scripts/build_book.py" "$(SKILL_DIR)examples/sample.md" /tmp/skill-demo.docx --profile booklet --title "Demo" --pdf
+
+clean:
+	find "$(SKILL_DIR)" -name __pycache__ -type d -prune -exec rm -r {} +

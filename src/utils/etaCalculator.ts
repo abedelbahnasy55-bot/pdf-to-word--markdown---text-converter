@@ -208,3 +208,196 @@ export function calculateSingleFileEta(
     formattedEta: formatEtaArabic(remainingSec),
   };
 }
+
+export interface StableBatchEtaState {
+  lastEtaSeconds: number | null;
+  lastPercentage: number;
+  lastTotalFiles: number;
+  lastTotalBytes: number;
+  lastElapsedSeconds: number;
+}
+
+export function createInitialStableEtaState(): StableBatchEtaState {
+  return {
+    lastEtaSeconds: null,
+    lastPercentage: 0,
+    lastTotalFiles: 0,
+    lastTotalBytes: 0,
+    lastElapsedSeconds: 0,
+  };
+}
+
+/**
+ * Computes a stable, smoothed, and monotonic ETA for active batch queues.
+ * Prevents the raw throughput formula from spiking upward when an active file's
+ * progress pauses while waiting on an in-flight AI OCR chunk.
+ */
+export function calculateStableBatchEta(
+  items: Array<{ size: number; status: string; progress?: number }>,
+  elapsedSeconds: number,
+  prevState?: StableBatchEtaState | null
+): { eta: BatchEtaInfo; nextState: StableBatchEtaState } {
+  const totalFiles = items.length;
+  if (totalFiles === 0) {
+    return {
+      eta: calculateBatchQueueEta(items, elapsedSeconds),
+      nextState: createInitialStableEtaState(),
+    };
+  }
+
+  let totalBytes = 0;
+  let processedBytes = 0;
+  let completedFiles = 0;
+  let remainingFiles = 0;
+  let maxActiveProgress = 0;
+  let baselineTotalSeconds = 0;
+  let baselineRemainingSeconds = 0;
+
+  for (const item of items) {
+    const itemSize = Math.max(1024, item.size || 1024);
+    totalBytes += itemSize;
+    // Realistic OCR baseline: ~12s base overhead + ~10s per 500KB of document
+    const itemEstSec = Math.max(15, 12 + (itemSize / (500 * 1024)) * 10);
+    baselineTotalSeconds += itemEstSec;
+
+    if (item.status === 'done') {
+      completedFiles++;
+      processedBytes += itemSize;
+    } else if (item.status === 'processing') {
+      remainingFiles++;
+      const pct = Math.max(0, Math.min(100, item.progress ?? 5));
+      maxActiveProgress = Math.max(maxActiveProgress, pct);
+      const ratio = pct / 100;
+      processedBytes += itemSize * ratio;
+      baselineRemainingSeconds += itemEstSec * Math.max(0.05, 1 - ratio);
+    } else if (item.status === 'pending') {
+      remainingFiles++;
+      baselineRemainingSeconds += itemEstSec;
+    }
+  }
+
+  const remainingBytes = Math.max(0, totalBytes - processedBytes);
+  const rawPercentage = Math.min(
+    100,
+    Math.max(0, Math.round((processedBytes / Math.max(1, totalBytes)) * 100))
+  );
+
+  if (remainingFiles === 0 || rawPercentage >= 100) {
+    const doneEta: BatchEtaInfo = {
+      totalFiles,
+      completedFiles,
+      remainingFiles: 0,
+      totalBytes,
+      processedBytes: totalBytes,
+      remainingBytes: 0,
+      overallPercentage: 100,
+      estimatedSecondsRemaining: 0,
+      formattedEta: 'اكتملت المعالجة بالكامل',
+      speedFormatted: 'مكتمل',
+      estimatedTotalSeconds: elapsedSeconds,
+    };
+    return {
+      eta: doneEta,
+      nextState: {
+        lastEtaSeconds: 0,
+        lastPercentage: 100,
+        lastTotalFiles: totalFiles,
+        lastTotalBytes: totalBytes,
+        lastElapsedSeconds: elapsedSeconds,
+      },
+    };
+  }
+
+  const queueExpanded =
+    !prevState ||
+    totalFiles > prevState.lastTotalFiles ||
+    totalBytes > prevState.lastTotalBytes;
+
+  const overallPercentage = queueExpanded
+    ? rawPercentage
+    : Math.max(prevState.lastPercentage, rawPercentage);
+
+  // Only blend empirical throughput once meaningful work is actually completed
+  // (at least 1 finished file OR active progress has advanced beyond initial overhead).
+  const hasMeaningfulProgress =
+    elapsedSeconds >= 5 &&
+    (completedFiles >= 1 || maxActiveProgress >= 25) &&
+    processedBytes > 1024;
+
+  let targetRemaining = Math.max(4, Math.round(baselineRemainingSeconds));
+  let displayBytesPerSec = totalBytes / Math.max(15, baselineTotalSeconds);
+
+  if (hasMeaningfulProgress) {
+    const observedBytesPerSec = processedBytes / Math.max(1, elapsedSeconds);
+    // Floor observed speed to avoid absurd spikes on slow single chunks
+    const safeObservedSpeed = Math.max(displayBytesPerSec * 0.4, observedBytesPerSec);
+    const empiricalEta = remainingBytes / Math.max(5000, safeObservedSpeed);
+    const blendWeight = completedFiles >= 1
+      ? Math.min(0.65, 0.25 + completedFiles * 0.1)
+      : Math.min(0.35, (maxActiveProgress - 20) / 100);
+    targetRemaining = Math.max(
+      4,
+      Math.round(baselineRemainingSeconds * (1 - blendWeight) + empiricalEta * blendWeight)
+    );
+    displayBytesPerSec = safeObservedSpeed;
+  }
+
+  let effectiveSecondsRemaining: number;
+  if (!prevState || prevState.lastEtaSeconds === null) {
+    effectiveSecondsRemaining = targetRemaining;
+  } else if (queueExpanded) {
+    const addedBytes = Math.max(0, totalBytes - prevState.lastTotalBytes);
+    const addedFiles = Math.max(0, totalFiles - prevState.lastTotalFiles);
+    const addedEst = Math.round(addedFiles * 12 + (addedBytes / (500 * 1024)) * 10);
+    effectiveSecondsRemaining = Math.max(4, prevState.lastEtaSeconds + addedEst);
+  } else {
+    const deltaElapsed = Math.max(0, elapsedSeconds - prevState.lastElapsedSeconds);
+    // Smooth natural countdown by elapsed seconds
+    const decremented = Math.max(4, prevState.lastEtaSeconds - deltaElapsed);
+
+    if (targetRemaining < decremented) {
+      // Gently pull down toward faster observed progress (max 25% of gap per tick)
+      const stepDown = Math.max(deltaElapsed, Math.round((decremented - targetRemaining) * 0.25));
+      effectiveSecondsRemaining = Math.max(4, prevState.lastEtaSeconds - stepDown);
+    } else {
+      // Strict anti-spike: never jump upward while waiting on an in-flight chunk
+      effectiveSecondsRemaining = decremented;
+    }
+  }
+
+  let speedFormatted = '';
+  if (displayBytesPerSec >= 1024 * 1024) {
+    speedFormatted = `${(displayBytesPerSec / (1024 * 1024)).toFixed(1)} م.ب/ث`;
+  } else {
+    speedFormatted = `${Math.max(1, Math.round(displayBytesPerSec / 1024))} ك.ب/ث`;
+  }
+
+  const formattedEta =
+    effectiveSecondsRemaining <= 5
+      ? 'ثوانٍ معدودة...'
+      : formatEtaArabic(effectiveSecondsRemaining);
+
+  return {
+    eta: {
+      totalFiles,
+      completedFiles,
+      remainingFiles,
+      totalBytes,
+      processedBytes,
+      remainingBytes,
+      overallPercentage,
+      estimatedSecondsRemaining: effectiveSecondsRemaining,
+      formattedEta,
+      speedFormatted,
+      estimatedTotalSeconds: elapsedSeconds + effectiveSecondsRemaining,
+    },
+    nextState: {
+      lastEtaSeconds: effectiveSecondsRemaining,
+      lastPercentage: overallPercentage,
+      lastTotalFiles: totalFiles,
+      lastTotalBytes: totalBytes,
+      lastElapsedSeconds: elapsedSeconds,
+    },
+  };
+}
+

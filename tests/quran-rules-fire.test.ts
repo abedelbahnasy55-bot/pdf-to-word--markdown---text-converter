@@ -588,6 +588,131 @@ describe('canonical rules: structural invariants', () => {
             "بـ",
           ],
         },
+        {
+          "impossible": 0,
+          "index": 25,
+          "literals": [
+            "خطة",
+            "القسم",
+            "الأدبياالفترة",
+            "الزمنيةاالموضوعات",
+          ],
+        },
+        {
+          "impossible": 0,
+          "index": 26,
+          "literals": [
+            "الفهرساالموضوعارقم",
+            "الصفحة",
+          ],
+        },
+        {
+          "impossible": 0,
+          "index": 27,
+          "literals": [
+            "الفقه",
+            "الحنفيانوع",
+            "الدليلاالتوضيح",
+          ],
+        },
+        {
+          "impossible": 0,
+          "index": 28,
+          "literals": [
+            "الرأياالحكماالتعليل",
+          ],
+        },
+        {
+          "impossible": 0,
+          "index": 29,
+          "literals": [
+            "بأنًا",
+            "بانًا",
+            "بأنّا",
+            "بانّا",
+          ],
+        },
+        {
+          "impossible": 0,
+          "index": 30,
+          "literals": [
+            "البيعي",
+            "والوزني",
+          ],
+        },
+        {
+          "impossible": 0,
+          "index": 31,
+          "literals": [
+            "الكتيف",
+          ],
+        },
+        {
+          "impossible": 0,
+          "index": 32,
+          "literals": [
+            "الزعْر",
+            "الزعر",
+            "والثمار",
+            "والزرع",
+          ],
+        },
+        {
+          "impossible": 0,
+          "index": 33,
+          "literals": [
+            "تريق",
+            "الصفقة",
+          ],
+        },
+        {
+          "impossible": 0,
+          "index": 34,
+          "literals": [
+            "السففل",
+          ],
+        },
+        {
+          "impossible": 0,
+          "index": 35,
+          "literals": [
+            "أجرة",
+            "الصيغ",
+          ],
+        },
+        {
+          "impossible": 0,
+          "index": 36,
+          "literals": [
+            "أكتوبرامن",
+          ],
+        },
+        {
+          "impossible": 0,
+          "index": 37,
+          "literals": [
+            "ومصوغهما",
+            "ومصوغهما",
+          ],
+        },
+        {
+          "impossible": 0,
+          "index": 38,
+          "literals": [
+            "أ",
+            "ي",
+            "شمخ",
+          ],
+        },
+        {
+          "impossible": 0,
+          "index": 39,
+          "literals": [
+            "٠",
+            "٩",
+            "شمخ",
+          ],
+        },
       ]
     `);
   });

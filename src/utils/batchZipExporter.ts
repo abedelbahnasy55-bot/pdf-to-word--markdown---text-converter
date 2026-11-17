@@ -1,10 +1,12 @@
 import JSZip from 'jszip';
-import saveAs from 'file-saver';
+import { safeDownloadBlob } from './fileDownloader';
 import { QueuedDocument } from './documentMerger';
 import { generateDocxBlob } from './docxExporter';
 
 export interface BatchZipExportOptions {
   includeMarkdown?: boolean;
+  includeText?: boolean;
+  onlyWord?: boolean;
   zipFileName?: string;
   onProgress?: (current: number, total: number, currentName: string) => void;
 }
@@ -17,7 +19,7 @@ export async function generateBatchZipBlob(
   completedDocs: QueuedDocument[],
   options: BatchZipExportOptions = {}
 ): Promise<{ blob: Blob; validCount: number; totalPages: number }> {
-  const { includeMarkdown = true, onProgress } = options;
+  const { includeMarkdown = true, includeText = true, onlyWord = false, onProgress } = options;
   const zip = new JSZip();
   let validCount = 0;
   let totalPagesSum = 0;
@@ -35,8 +37,9 @@ export async function generateBatchZipBlob(
     '=======================================================\n',
   ];
 
-  // Optional folder for markdown sources
-  const mdFolder = includeMarkdown ? zip.folder('ملفات_نصية_Markdown') : null;
+  // Folders for markdown and plain text sources (if not onlyWord)
+  const mdFolder = !onlyWord && includeMarkdown ? zip.folder('ملفات_نصية_Markdown') : null;
+  const txtFolder = !onlyWord && includeText ? zip.folder('ملفات_نص_خام_Text') : null;
 
   for (let i = 0; i < validDocs.length; i++) {
     const doc = validDocs[i];
@@ -67,6 +70,12 @@ export async function generateBatchZipBlob(
     // 2. Add Markdown source if requested
     if (includeMarkdown && mdFolder && doc.result?.markdown) {
       mdFolder.file(`${baseName}.md`, doc.result.markdown);
+    }
+
+    // 3. Add Plain Text (.txt)
+    if (txtFolder) {
+      const plainTextContent = doc.result?.plainText || doc.result?.markdown || '';
+      txtFolder.file(`${baseName}.txt`, plainTextContent);
     }
 
     summaryLines.push(
@@ -103,6 +112,6 @@ export async function downloadBatchAsZip(
     zipName || `حزمة_ملفات_الوورد_${new Date().toISOString().slice(0, 10)}.zip`;
 
   const { blob, validCount, totalPages } = await generateBatchZipBlob(completedDocs, options);
-  saveAs(blob, defaultZipName);
+  safeDownloadBlob(blob, defaultZipName);
   return { validCount, totalPages };
 }

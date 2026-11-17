@@ -240,7 +240,7 @@ export async function documentStructuralAuditor(
     const firstLineMatch = repairedMd.match(/^[ \t]*([^\n#\-*|]{4,60})/);
     const candidateTitle = filename
       ? filename.replace(/\.(pdf|docx|md|txt)$/i, '').replace(/_/g, ' ')
-      : firstLineMatch ? firstLineMatch[1].trim() : 'مذكرة المنهج الأزهري المقرر';
+      : firstLineMatch ? firstLineMatch[1].trim() : 'Converted Document';
 
     issues.push({
       id: `header-missing-h1`,
@@ -295,6 +295,17 @@ export async function documentStructuralAuditor(
       pattern: /^(?![#\s]*#)[ \t]*(المبحث\s+(الأول|الثاني|الثالث|الرابع)[^\n]*)$/gm,
       level: '###',
       label: 'عنوان مبحث فرعي',
+    },
+    // English curriculum & textbook structural patterns (e.g. Giants, Gem, etc.)
+    {
+      pattern: /^(?![#\s]*#)[ \t]*((?:Unit|Chapter|Module|Part)\s+\d+[:\s\-–—]?[^\n]*)$/gim,
+      level: '##',
+      label: 'عنوان وحدة أو فصل دراسي إنجليزي (Unit / Chapter)',
+    },
+    {
+      pattern: /^(?![#\s]*#)[ \t]*((?:Lesson\s+\d+|Vocabulary|Grammar|Language Notes|Reading & Critical Thinking|General Exercises|Practice Test|Skills|Exam)\b[^\n]*)$/gim,
+      level: '###',
+      label: 'عنوان قسم أو مهارة إنجليزية (English Section / Skill)',
     }
   ];
 

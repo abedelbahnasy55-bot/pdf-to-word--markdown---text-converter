@@ -274,7 +274,7 @@ describe('G. layoutIntegrityCore — auditAndRestructureLayout', () => {
     // `isArabicText` returns false, so nothing is counted as RTL-compliant.
     expect(report.pageAudits[0].isRtlCompliant).toBe(false);
     expect(report.rtlEnforcedCount).toMatchInlineSnapshot(`0`);
-    expect(report.isAllPagesValid).toBe(false);
+    expect(report.isAllPagesValid).toBe(true);
   });
 
   it('DEAD COMPUTATION: an orphan heading is detected but has NO effect on the report', async () => {
@@ -358,7 +358,7 @@ describe('G. layoutIntegrityCore — auditAndRestructureLayout', () => {
       statuses: report.pageAudits.map(p => p.status),
     }).toMatchInlineSnapshot(`
       {
-        "isAllPagesValid": false,
+        "isAllPagesValid": true,
         "overallLayoutScore": 100,
         "statuses": [
           "perfect",
@@ -482,7 +482,7 @@ describe('G. layoutIntegrityCore — auditAndRestructureLayout', () => {
 
 
       | Term | Meaning | Note |
-      | ---: | ---: | ---: |
+      | :--- | :--- | :--- |
       | core | the inner part | ــ |
       | shell | the outer part | ــ |
 
@@ -517,10 +517,10 @@ describe('G. layoutIntegrityCore — auditAndRestructureLayout', () => {
     `);
     expect(result.report).toMatchInlineSnapshot(`
       {
-        "isAllPagesValid": false,
+        "isAllPagesValid": true,
         "listsNormalizedCount": 0,
         "overallLayoutScore": 100,
-        "overallVerdict": "تم الفحص الهيكلي الكامل لـ (2) صفحة: تم تثبيت أبعاد (1) جدول، وضبط محاذاة (0) قائمة، وضمان اتجاه RTL متطابق 100% لكافة الفقرات.",
+        "overallVerdict": "تم الفحص الهيكلي الكامل لـ (2) صفحة: تم تثبيت أبعاد (1) جدول، وضبط محاذاة (0) قائمة، ومعايرة اتجاه LTR والتنسيق الأكاديمي الإنجليزي بدقة 100%.",
         "pageAudits": [
           {
             "isRtlCompliant": false,
@@ -529,7 +529,7 @@ describe('G. layoutIntegrityCore — auditAndRestructureLayout', () => {
             "pageNumber": 1,
             "status": "repaired",
             "tableIssues": [
-              "إدراج سطر ترويسة الجدول وتثبيت محاذاة اليمين (RTL Columns Locked)",
+              "إدراج سطر ترويسة الجدول وتثبيت محاذاة اليسار (LTR Columns Locked)",
             ],
             "totalLists": 4,
             "totalTables": 1,

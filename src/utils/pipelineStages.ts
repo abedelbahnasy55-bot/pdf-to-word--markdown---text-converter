@@ -1,6 +1,9 @@
 import { ProcessingStageId, StageStatus } from '../types';
 
-export function createInitialStages(activeStage: ProcessingStageId = 'extraction'): StageStatus[] {
+export function createInitialStages(
+  activeStage: ProcessingStageId = 'extraction',
+  isEnglish: boolean = false
+): StageStatus[] {
   const stageOrder: ProcessingStageId[] = [
     'image_denoise',
     'extraction',
@@ -9,6 +12,7 @@ export function createInitialStages(activeStage: ProcessingStageId = 'extraction
     'structural',
     'quranic_verification',
     'layout_integrity',
+    'structural_integrity',
     'finalizing'
   ];
   const activeIndex = stageOrder.indexOf(activeStage);
@@ -26,6 +30,74 @@ export function createInitialStages(activeStage: ProcessingStageId = 'extraction
     if (idx === activeIndex) return defaultInProgress;
     return 0;
   };
+
+  if (isEnglish) {
+    return [
+      {
+        id: 'image_denoise',
+        title: 'تحسين ومعالجة الصور المشوشة (De-noise)',
+        subtitle: 'تنقية التشويش، إزالة التحبيب وتوضيح النصوص لتعزيز دقة التعرف',
+        status: getStatus('image_denoise'),
+        progress: getProgress('image_denoise', 50),
+      },
+      {
+        id: 'extraction',
+        title: 'استخراج المحتوى والجداول (Content & Tables)',
+        subtitle: 'تفريغ النصوص والجداول والرموز بدقة عالية',
+        status: getStatus('extraction'),
+        progress: getProgress('extraction', 40),
+      },
+      {
+        id: 'contextual',
+        title: 'التحقق الأكاديمي والمصادر (Contextual & Sources)',
+        subtitle: 'مطابقة المصطلحات الأكاديمية والمراجع العلمية',
+        status: getStatus('contextual'),
+        progress: getProgress('contextual', 55),
+      },
+      {
+        id: 'grammar',
+        title: 'التحليل النحوي وبنية الجمل (English Grammar & Syntax)',
+        subtitle: 'تدقيق التراكيب والفقرات الإنجليزية وكشف الجمل المفتوحة والبتر المفاجئ',
+        status: getStatus('grammar'),
+        progress: getProgress('grammar', 70),
+      },
+      {
+        id: 'structural',
+        title: 'التدقيق الهيكلي للأبواب والفصول (Structural Auditor)',
+        subtitle: 'فحص تسلسل العناوين (H1, H2, H3) والجداول وقوائم الترقيم والهوامش السفلية',
+        status: getStatus('structural'),
+        progress: getProgress('structural', 85),
+      },
+      {
+        id: 'quranic_verification',
+        title: 'التدقيق التيبوغرافي والمعادلات (Typography & Math)',
+        subtitle: 'مطابقة المصطلحات اللاتينية والمعادلات الرياضية LaTeX بدقة 100%',
+        status: getStatus('quranic_verification'),
+        progress: getProgress('quranic_verification', 90),
+      },
+      {
+        id: 'layout_integrity',
+        title: 'معايرة الصفحات وتثبيت اتجاه LTR (Layout Integrity Engine)',
+        subtitle: 'فحص هيكلية كل صفحة وتثبيت أبعاد الجداول والقوائم لضمان اتجاه LTR متطابق 100%',
+        status: getStatus('layout_integrity'),
+        progress: getProgress('layout_integrity', 95),
+      },
+      {
+        id: 'structural_integrity',
+        title: 'التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)',
+        subtitle: 'فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML',
+        status: getStatus('structural_integrity'),
+        progress: getProgress('structural_integrity', 96),
+      },
+      {
+        id: 'finalizing',
+        title: 'الإخراج والضبط النهائي بالمسطرة',
+        subtitle: 'تطهير الفراغات وتوليد مستند Word (.docx) منسق باحترافية',
+        status: getStatus('finalizing'),
+        progress: getProgress('finalizing', 98),
+      },
+    ];
+  }
 
   return [
     {
@@ -78,6 +150,13 @@ export function createInitialStages(activeStage: ProcessingStageId = 'extraction
       progress: getProgress('layout_integrity', 95),
     },
     {
+      id: 'structural_integrity',
+      title: 'التدقيق البنيوي لملفات DOCX (Structural Integrity Audit)',
+      subtitle: 'فحص البنية الشجرية، كشف ومنع التكرار البنيوي، والتحقق من سلامة وسوم XML والتظليل',
+      status: getStatus('structural_integrity'),
+      progress: getProgress('structural_integrity', 96),
+    },
+    {
       id: 'finalizing',
       title: 'الإخراج والضبط النهائي بالمسطرة',
       subtitle: 'تطهير الفراغات وتوليد مستند Word (.docx) محقق 100%',
@@ -89,7 +168,8 @@ export function createInitialStages(activeStage: ProcessingStageId = 'extraction
 
 export function updateStageList(
   activeStage: ProcessingStageId,
-  stageProgressValue?: number
+  stageProgressValue?: number,
+  isEnglish: boolean = false
 ): StageStatus[] {
   const stageOrder: ProcessingStageId[] = [
     'image_denoise',
@@ -99,11 +179,12 @@ export function updateStageList(
     'structural',
     'quranic_verification',
     'layout_integrity',
+    'structural_integrity',
     'finalizing'
   ];
   const activeIndex = stageOrder.indexOf(activeStage);
 
-  return createInitialStages(activeStage).map((stage, idx) => {
+  return createInitialStages(activeStage, isEnglish).map((stage, idx) => {
     if (idx < activeIndex) {
       return { ...stage, status: 'completed', progress: 100 };
     }

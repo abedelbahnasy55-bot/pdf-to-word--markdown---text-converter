@@ -176,7 +176,51 @@ describe('B. quranicVerificationAgent — supporting pure functions', () => {
         ],
         [
           2,
+          8,
+        ],
+        [
           3,
+          5,
+        ],
+        [
+          4,
+          2,
+        ],
+        [
+          17,
+          3,
+        ],
+        [
+          18,
+          3,
+        ],
+        [
+          24,
+          2,
+        ],
+        [
+          31,
+          2,
+        ],
+        [
+          36,
+          4,
+        ],
+        [
+          49,
+          3,
+        ],
+        [
+          55,
+          5,
+        ],
+        [
+          59,
+          4,
+        ],
+        [
+          62,
+          1,
         ],
         [
           67,
@@ -205,6 +249,30 @@ describe('B. quranicVerificationAgent — supporting pure functions', () => {
         [
           84,
           25,
+        ],
+        [
+          90,
+          4,
+        ],
+        [
+          93,
+          5,
+        ],
+        [
+          94,
+          6,
+        ],
+        [
+          95,
+          4,
+        ],
+        [
+          96,
+          5,
+        ],
+        [
+          97,
+          5,
         ],
         [
           103,
@@ -311,13 +379,13 @@ describe('B. quranicVerificationAgent — quranicVerificationAgent', () => {
 
       قال ابن عباس: ﴿تَبَارَكَ الَّذِي بِيَدِهِ الْمُلْكُ﴾ الملك التام.
 
-      وفي جدول وجوه الإعراب تصحيح شائع والصواب ﴿الرَّحْمَٰنِ مِن﴾.
+      وفي جدول وجوه الإعراب تصحيح شائع والصواب ﴿مِن تَفَاوُتٍۖ﴾.
 
       ورد ﴿لَّابِثِينَ فِيهَا أَحْقَابًا﴾ في سورة النبأ، وكُتبت ﴿لَّابِثِينَ﴾ خطأً.
 
       وأورد جدول الأسرار البلاغية: ﴿سَمِعُوا لَهَا شَهِيقًا﴾ استعارة مكنية.
 
-      وفي التدريب: ﴿خَزَنَتُهَا أَلَمْ يَأْتِكُمْ﴾ على السورة.
+      وفي التدريب: ﴿أَلَمْ يَأْتِكُمْ نَذِيرٌ﴾ على السورة.
 
       و ﴿معنى ﴿غَرْقًا﴾ مبالغة في النزع﴾.
 
@@ -331,14 +399,14 @@ describe('B. quranicVerificationAgent — quranicVerificationAgent', () => {
 
       وفي سورة الانشقاق: ﴿إِذَا السَّمَاءُ انشَقَّتْ﴾ ، وفي سورة الانفطار: ﴿إِذَا السَّمَاءُ انفَطَرَتْ﴾.
 
-       resultado: ﴿خَزَنَتُهَا أَلَمْ يَأْتِكُمْ﴾ ﴿سَمِعُوا لَهَا شَهِيقًا﴾ ﴿أَن يَخْسِفَ﴾ ﴿يَنقَلِبْ﴾"
+       resultado: ﴿أَلَمْ يَأْتِكُمْ نَذِيرٌ﴾ ﴿سَمِعُوا لَهَا شَهِيقًا﴾ ﴿أَن يَخْسِفَ﴾ ﴿يَنقَلِبْ﴾"
     `);
     expect(result.report).toMatchInlineSnapshot(`
       {
-        "accuracyRate": 55,
-        "correctedVersesCount": 10,
+        "accuracyRate": 73,
+        "correctedVersesCount": 6,
         "hasUthmaniDiscrepancies": true,
-        "overallVerificationVerdict": "تم التحقق القرآني بالرسم العثماني المعتمد بنجاح: تم فحص وتدقيق 22 آية وموضع قرآني، وضبط وتصحيح 10 تحريفاً وتصحيفاً بالمسطرة وفق مصحف المدينة النبوية (رواية حفص عن عاصم) بدقة 100%.",
+        "overallVerificationVerdict": "تم التحقق القرآني بالرسم العثماني المعتمد بنجاح: تم فحص وتدقيق 22 آية وموضع قرآني، وضبط وتصحيح 6 تحريفاً وتصحيفاً بالمسطرة وفق مصحف المدينة النبوية (رواية حفص عن عاصم) بدقة 100%.",
         "totalVersesDetected": 22,
         "totalVersesVerified": 22,
         "verifiedVerses": [
@@ -386,9 +454,9 @@ describe('B. quranicVerificationAgent — quranicVerificationAgent', () => {
           },
           {
             "ayahNumber": 3,
-            "canonicalUthmani": "الرَّحْمَٰنِ مِن",
+            "canonicalUthmani": "مِن تَفَاوُتٍۖ",
             "discrepanciesCount": 1,
-            "fixedSnippet": "﴿الرَّحْمَٰنِ مِن﴾",
+            "fixedSnippet": "﴿مِن تَفَاوُتٍۖ﴾",
             "foundSnippet": "﴿مِن تَفَاوُتٍ﴾",
             "id": "quran-verify-verse-4",
             "isCorrected": true,
@@ -442,15 +510,15 @@ describe('B. quranicVerificationAgent — quranicVerificationAgent', () => {
           },
           {
             "ayahNumber": 8,
-            "canonicalUthmani": "خَزَنَتُهَا أَلَمْ يَأْتِكُمْ",
-            "discrepanciesCount": 1,
-            "fixedSnippet": "﴿خَزَنَتُهَا أَلَمْ يَأْتِكُمْ﴾",
+            "canonicalUthmani": "أَلَمْ يَأْتِكُمْ نَذِيرٌ",
+            "discrepanciesCount": 0,
+            "fixedSnippet": "﴿أَلَمْ يَأْتِكُمْ نَذِيرٌ﴾",
             "foundSnippet": "﴿أَلَمْ يَأْتِكُمْ نَذِيرٌ﴾",
             "id": "quran-verify-verse-8",
-            "isCorrected": true,
+            "isCorrected": false,
             "matchSimilarity": 1,
             "normalizedFound": "الم ياتكم نذير",
-            "notes": "تمت المطابقة والضبط بالمسطرة وفق الرسم العثماني لسورة الملك (الآية 8).",
+            "notes": "الآية الكريمة سليمة ومطابقة تماماً للرسم العثماني المعتمد برواية حفص عن عاصم.",
             "surahName": "الملك",
             "surahNumber": 67,
           },
@@ -569,42 +637,42 @@ describe('B. quranicVerificationAgent — quranicVerificationAgent', () => {
           {
             "ayahNumber": 1,
             "canonicalUthmani": "إِذَا السَّمَاءُ انشَقَّتْ",
-            "discrepanciesCount": 1,
+            "discrepanciesCount": 0,
             "fixedSnippet": "﴿إِذَا السَّمَاءُ انشَقَّتْ﴾",
-            "foundSnippet": "﴿﴿إِذَا السَّمَاءُ انشَقَّتْ﴾",
+            "foundSnippet": "﴿إِذَا السَّمَاءُ انشَقَّتْ﴾",
             "id": "quran-verify-verse-17",
-            "isCorrected": true,
+            "isCorrected": false,
             "matchSimilarity": 1,
             "normalizedFound": "اذا السماء انشقت",
-            "notes": "تمت المطابقة والضبط بالمسطرة وفق الرسم العثماني لسورة الانشقاق (الآية 1).",
+            "notes": "الآية الكريمة سليمة ومطابقة تماماً للرسم العثماني المعتمد برواية حفص عن عاصم.",
             "surahName": "الانشقاق",
             "surahNumber": 84,
           },
           {
             "ayahNumber": 1,
             "canonicalUthmani": "إِذَا السَّمَاءُ انفَطَرَتْ",
-            "discrepanciesCount": 1,
+            "discrepanciesCount": 0,
             "fixedSnippet": "﴿إِذَا السَّمَاءُ انفَطَرَتْ﴾",
-            "foundSnippet": "﴿﴿إِذَا السَّمَاءُ انفَطَرَتْ﴾",
+            "foundSnippet": "﴿إِذَا السَّمَاءُ انفَطَرَتْ﴾",
             "id": "quran-verify-verse-18",
-            "isCorrected": true,
+            "isCorrected": false,
             "matchSimilarity": 1,
             "normalizedFound": "اذا السماء انفطرت",
-            "notes": "تمت المطابقة والضبط بالمسطرة وفق الرسم العثماني لسورة الانفطار (الآية 1).",
+            "notes": "الآية الكريمة سليمة ومطابقة تماماً للرسم العثماني المعتمد برواية حفص عن عاصم.",
             "surahName": "الانفطار",
             "surahNumber": 82,
           },
           {
             "ayahNumber": 8,
-            "canonicalUthmani": "خَزَنَتُهَا أَلَمْ يَأْتِكُمْ",
-            "discrepanciesCount": 1,
-            "fixedSnippet": "﴿خَزَنَتُهَا أَلَمْ يَأْتِكُمْ﴾",
+            "canonicalUthmani": "أَلَمْ يَأْتِكُمْ نَذِيرٌ",
+            "discrepanciesCount": 0,
+            "fixedSnippet": "﴿أَلَمْ يَأْتِكُمْ نَذِيرٌ﴾",
             "foundSnippet": "﴿أَلَمْ يَأْتِكُمْ نَذِيرٌ﴾",
             "id": "quran-verify-verse-19",
-            "isCorrected": true,
+            "isCorrected": false,
             "matchSimilarity": 1,
             "normalizedFound": "الم ياتكم نذير",
-            "notes": "تمت المطابقة والضبط بالمسطرة وفق الرسم العثماني لسورة الملك (الآية 8).",
+            "notes": "الآية الكريمة سليمة ومطابقة تماماً للرسم العثماني المعتمد برواية حفص عن عاصم.",
             "surahName": "الملك",
             "surahNumber": 67,
           },
@@ -681,7 +749,7 @@ describe('B. quranicVerificationAgent — quranicVerificationAgent', () => {
     // line only the auditor can repair.
     const onlyAuditorRule = 'تصحيح شائع: مَن تَقُوتُ والصواب ﴿مِن تَفَاوُتٍ﴾';
     const { verifiedMarkdown, report } = await quranicVerificationAgent(onlyAuditorRule);
-    expect(verifiedMarkdown).toMatchInlineSnapshot(`"تصحيح شائع: ﴿الرَّحْمَٰنِ مِن﴾ والصواب ﴿الرَّحْمَٰنِ مِن﴾"`);
+    expect(verifiedMarkdown).toMatchInlineSnapshot(`"تصحيح شائع: ﴿مِن تَفَاوُتٍۖ﴾ والصواب ﴿مِن تَفَاوُتٍۖ﴾"`);
     expect(report.totalVersesDetected).toMatchInlineSnapshot(`2`);
   });
 
@@ -706,7 +774,7 @@ describe('B. quranicVerificationAgent — quranicVerificationAgent', () => {
       | مَا تَرَىٰ | اسم مبتدأ | ــ |
       | تَفَاوُتٍ | مجرور | مِن زائدة |
 
-      - ** ﴿الرَّحْمَٰنِ مِن﴾ ** تصحيح شائع والصواب *مِن تَفَاوُتٍ*.
+      - ** ﴿مِن تَفَاوُتٍۖ﴾ ** تصحيح شائع والصواب *مِن تَفَاوُتٍ*.
       - نص برمجي: \`code_sample = "تفاوت"\`.
       - معادلة: $E = mc^2$ و $a^2 + b^2 = c^2$.
       - رابط: [المصحف](https://quran.com) للمراجعة.
@@ -721,7 +789,9 @@ describe('B. quranicVerificationAgent — quranicVerificationAgent', () => {
       ج: قيل: المراد الملائكة تدبر أمر العباد بإذن الله، وقيل الأفلاك، وقيل أُسند التدبير للخيل لشدة جريها وعظيم نفعها وتدبيرها في ساحة القتال والجهاد.
       ج: قيل: المراد الملائكة.
 
-      فقط.....ثم..... [تم تطهير سيل النقاط وإعادة النصوص المحذوفة] .....علوم القرآن هي: مباحث تتعلق بالقرآن الكريم من حيث نزوله وترتيبه وجمعه وكتابته وقراءته وتفسيره وإعجازه وناسخه ومنسوخه ودفع الشبه عنه.
+      فقط.....ثمتم تطهير سيل النقاط
+
+      علوم القرآن هي: مباحث تتعلق بالقرآن الكريم من حيث نزوله وترتيبه وجمعه وكتابته وقراءته وتفسيره وإعجازه وناسخه ومنسوخه ودفع الشبه عنه.
 
       والمراد من ذلك الجنس الصادق بالمخيط المحيط كقميص وجبة وسراويل وخف، فيحرم لبسه على المحرم ذكراً كان بالاتفاق.
       الأرقام بالخط الهندي: ٠١٢٣٤٥٦٧٨٩ وبالخط الغربي: 0123456789
@@ -742,7 +812,7 @@ describe('B. quranicVerificationAgent — quranicVerificationAgent', () => {
 
       كفته نيته.
 
-      ﴿الرَّحْمَٰنِ مِن﴾
+      ﴿مِن تَفَاوُتٍۖ﴾
 
       الصفحة 22
       "

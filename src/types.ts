@@ -1,3 +1,6 @@
+import type { MicroscopicAuditResult } from './utils/microscopicAuditEngine';
+import type { CleanerAuditReport } from './utils/textCleanerEngine';
+
 export interface ConversionOptions {
   /**
    * Pages per AI request. Read at documentConverter.ts and passed to the chunker.
@@ -36,7 +39,7 @@ export interface ConversionOptions {
  * words it cannot actually see.
  */
 export const CONVERSION_DEFAULTS: ConversionOptions = {
-  quotaOptimization: 'maximum_savings',
+  quotaOptimization: 'high_fidelity',
 };
 
 export interface QuranErrorItem {
@@ -98,6 +101,7 @@ export type ProcessingStageId =
   | 'structural'
   | 'quranic_verification'
   | 'layout_integrity'
+  | 'structural_integrity'
   | 'finalizing';
 
 export interface StageStatus {
@@ -127,6 +131,7 @@ export interface ConversionProgress {
   pausedErrorMessage?: string;
   processedChunksCount?: number;
   partialMarkdown?: string;
+  preFlightReport?: any;
 }
 
 export interface ConversionResumeState {
@@ -231,6 +236,23 @@ export interface LayoutIntegrityReport {
   pageAudits: PageLayoutAuditItem[];
 }
 
+export interface StructuralIntegrityReport {
+  isValidDocxStructure: boolean;
+  hasStructuralDuplication: boolean;
+  duplicateBodyDetected: boolean;
+  xmlDeclarationCount: number;
+  documentRootCount: number;
+  bodyTagCount: number;
+  orphanTailDetected: boolean;
+  orphanPipesCleanedCount: number;
+  markTagsConvertedToHighlightCount: number;
+  markTagsInTextCount?: number;
+  tablesCount?: number;
+  repairedDuplicationsCount: number;
+  overallVerdict: string;
+  docxByteSize?: number;
+}
+
 export interface ConversionResult {
   detectedLanguage: string;
   textDirection: 'rtl' | 'ltr';
@@ -244,6 +266,7 @@ export interface ConversionResult {
   title: string;
   markdown: string;
   plainText: string;
+  sourceExtractText?: string;
   fileName?: string;
   fileSize?: number;
   conversionDurationMs?: number;
@@ -254,6 +277,11 @@ export interface ConversionResult {
   structuralAuditReport?: StructuralAuditReport;
   quranicVerificationReport?: QuranicVerificationReport;
   layoutIntegrityReport?: LayoutIntegrityReport;
+  structuralIntegrityReport?: StructuralIntegrityReport;
+  microscopicAuditReport?: MicroscopicAuditResult;
+  textCleanerReport?: CleanerAuditReport;
+  strictQAReport?: any;
+  preFlightReport?: any;
 }
 
 export interface SavedConversion {

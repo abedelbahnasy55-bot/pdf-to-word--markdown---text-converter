@@ -1,14 +1,25 @@
 <!doctype html>
-<html lang="en" class="h-full">
+<html lang="ar" dir="rtl" class="h-full">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PDF to Word, Markdown & Text Converter</title>
-    <meta name="description" content="High-fidelity PDF and Image transcription and converter: transcribes and extracts Arabic and English text from PDFs and Images (PNG, JPG, BMP) into Word (.docx), Markdown (.md), and Text (.txt), with a zero-quota direct text extraction mode and unattended sequential batch queue processing." />
-    <meta property="og:title" content="PDF to Word, Markdown & Text Converter" />
-    <meta property="og:description" content="High-fidelity PDF and Image transcription and converter: transcribes and extracts Arabic and English text from PDFs and Images (PNG, JPG, BMP) into Word (.docx), Markdown (.md), and Text (.txt), with a zero-quota direct text extraction mode and unattended sequential batch queue processing." />
+    <title>استوديو التحرير والوثائق | محوّل PDF و Word الاحترافي</title>
+    <meta name="description" content="منصة احترافية لتحويل وتفريغ ملفات PDF والصور والمستندات العربية والإنجليزية إلى Word (.docx) و Markdown بدقة معيارية مع معالجة خلفية مستمرة وتدقيق لغوي وقرآني متكامل." />
+    <meta property="og:title" content="استوديو التحرير والوثائق | محوّل PDF و Word الاحترافي" />
+    <meta property="og:description" content="منصة احترافية لتحويل وتفريغ ملفات PDF والصور والمستندات العربية والإنجليزية إلى Word (.docx) و Markdown بدقة معيارية." />
     <script>
       (function() {
+        try {
+          var savedTheme = window.localStorage.getItem('studio_theme');
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+            document.documentElement.classList.add('dark');
+            document.documentElement.style.colorScheme = 'dark';
+          } else {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.style.colorScheme = 'light';
+          }
+        } catch (e) {}
         try {
           var originalFetch = window.fetch;
           Object.defineProperty(window, 'fetch', {
@@ -25,9 +36,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Cairo:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
   </head>
-  <body class="h-full bg-slate-50 text-slate-900 antialiased font-sans">
+  <body class="h-full bg-[#FBFBF9] dark:bg-[#0B0D12] text-slate-900 dark:text-slate-100 antialiased font-sans transition-colors duration-200">
     <div id="root" class="h-full"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
