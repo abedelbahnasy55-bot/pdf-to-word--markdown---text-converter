@@ -35,7 +35,9 @@ npm install
 node batch-runner.js --input="/path/to/books" --output="./converted_output" --bundle-size=15
 
 # أو تحديد سيرفر مخصص عبر المتغير البيئي:
-export CONVERTER_SERVER_URL="https://ais-dev-wpsct27fdufcpry5x6ikjn-685461883733.europe-west2.run.app"
+export CONVERTER_SERVER_URL="https://pdf-to-word-markdown-text-converter.ai.studio"
+# وفي حال تفعيل قفل دخول الفريق:
+# export TEAM_ACCESS_CODE="TEAM-XXXX"
 node batch-runner.js --input="./my_books" --output="./converted"
 ```
 
@@ -43,14 +45,15 @@ node batch-runner.js --input="./my_books" --output="./converted"
 - `--input`, `-i`: مسار مجلد كتب PDF المراد تحويلها (إلزامي).
 - `--output`, `-o`: مسار مجلد حفظ المخرجات والملفات المحولة وحزم الـ ZIP (افتراضي: `./converted_output`).
 - `--bundle-size`, `-b`: عدد الكتب في كل حزمة ZIP مضغوطة مجدولة (افتراضي: `15`).
-- `--server`, `-s`: عنوان خادم التحويل (افتراضي: `https://ais-dev-wpsct27fdufcpry5x6ikjn-685461883733.europe-west2.run.app`).
+- `--server`, `-s`: عنوان خادم التحويل (افتراضي: `https://pdf-to-word-markdown-text-converter.ai.studio`).
+- `--team-code`: رمز دخول الفريق الاختياري عند تفعيل قفل الفريق على الخادم.
 - `--api-key`, `-k`: مفتاح Gemini API اختياري في حال الرغبة بالتحويل المباشر دون المرور بالسيرفر.
 
 ---
 
 ## 3. خادم بروتوكول سياق النماذج (`mcp-server.js`)
 
-خادم متوافق 100% مع معيار **Model Context Protocol (MCP)** الإصدار `2024-11-05` عبر `stdio` بدون Echo، ويتيح لعملاء الذكاء الاصطناعي (Claude Desktop, Cursor, OpenCode, Windsurf) إدارة تحويل الكتب.
+خادم متوافق 100% مع معيار **Model Context Protocol (MCP)** الإصدار `2024-11-05` عبر `stdio` بدون Echo، ويتيح لأدوات التطوير المحلية إدارة تحويل الكتب.
 
 ### إعداد Claude Desktop / OpenCode:
 أضف إلى ملف إعدادات MCP:
@@ -61,7 +64,7 @@ node batch-runner.js --input="./my_books" --output="./converted"
       "command": "node",
       "args": ["/absolute/path/to/scripts/mcp-server.js"],
       "env": {
-        "CONVERTER_SERVER_URL": "https://ais-dev-wpsct27fdufcpry5x6ikjn-685461883733.europe-west2.run.app"
+        "CONVERTER_SERVER_URL": "https://pdf-to-word-markdown-text-converter.ai.studio"
       }
     }
   }

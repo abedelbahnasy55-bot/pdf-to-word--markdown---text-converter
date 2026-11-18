@@ -116,7 +116,7 @@ function stripTerminatorAndTrailingComment(line: string): string {
 export function extractChain(
   relPath: string,
   anchorNeedle: string,
-  shape: 'const' | 'prop' = 'const',
+  shape: 'const' | 'prop' | 'return' = 'const',
 ): ExtractedChain {
   const lines = readSourceLines(relPath);
   const startLine = findLine(relPath, anchorNeedle);
@@ -134,6 +134,16 @@ export function extractChain(
       );
     }
     [, resultName, inputName] = m;
+    rhs = inputName;
+  } else if (shape === 'return') {
+    const m = anchor.match(/^\s*return\s+([A-Za-z_$][\w$]*)\s*$/);
+    if (!m) {
+      throw new Error(
+        `Anchor ${relPath}:${startLine} is not "return INPUT": ${JSON.stringify(anchor)}`,
+      );
+    }
+    [, inputName] = m;
+    resultName = 'return';
     rhs = inputName;
   } else {
     const m = anchor.match(/^\s*([A-Za-z_$][\w$]*)\s*:\s*([A-Za-z_$][\w$]*)\s*,?\s*$/);

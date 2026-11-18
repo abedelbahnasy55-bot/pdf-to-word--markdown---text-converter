@@ -1,40 +1,48 @@
 # Architecture & System Map
 
 ## 1. Overview
-The application is a high-fidelity Arabic PDF & Document to Word/Markdown conversion and audit platform. It enforces strict RTL typesetting, Islamic textual verification (Quran & Hadith), and page-for-page parity.
+**Arabic & Bilingual Document Studio** is a full-stack bilingual (Arabic/English) PDF, image, and Word conversion, auditing, compilation, and Google Workspace publishing platform. It guarantees verbatim extraction fidelity, Uthmani Quranic script validation (`﴿...﴾`), vector underline preservation (`<u>...</u>` for grammar/exam spans), calibrated RTL `.docx` / Google Docs output, and zero-interruption server-side job persistence.
 
-## 2. Layering Architecture
+---
+
+## 2. Layering & Routing Architecture
 
 ```mermaid
 graph TD
-    UI[Web UI Layer: Dropzone, OutputViewer, StrictQAGatesCard, MicroscopicAuditStudio] --> Orchestrator[documentConverter.ts]
-    Orchestrator --> PreFlight[pdfInspectorCore.ts]
-    Orchestrator --> Chunker[pdfChunker.ts]
-    Orchestrator --> Backend[AI Multimodal & Direct Extraction]
-    Backend --> StructuralClean[structuralCleaner.ts]
-    StructuralClean --> TextProc[textProcessor.ts & textCleanerEngine.ts]
-    TextProc --> QuranicVerify[quranicVerificationAgent.ts & quranAuditor.ts]
-    QuranicVerify --> LayoutCore[layoutIntegrityCore.ts]
-    LayoutCore --> StructAuditor[structuralIntegrityAuditor.ts]
-    StructAuditor --> QAGates[strictQAGatesEngine.ts (v2.9.6)]
-    QAGates --> DocxExport[docxExporter.ts Heritage Palette]
+    PublicUI[Public Workspace / — Dropzone, Batch Queue, OutputViewer, SmartCompilerWorkspace] --> ClientOrch[documentConverter.ts + apiFetch]
+    AdminUI[Supervisor Console /?admin=1 — Links, Team Auth, Model Pool, CLI Hub, Custom Instructions] --> ServerAPI[Express server.ts]
+    ClientOrch --> PreFlight[pdfInspectorCore.ts]
+    ClientOrch --> DigitalExtract[POST /api/extract-direct-pdf + pdfUnderlineExtractor.ts]
+    ClientOrch --> ServerOCR[POST /api/convert-pdf + server/modelPool.ts]
+    ClientOrch --> BgJobs[POST /api/jobs + server/backgroundJobManager.ts (.jobs/)]
+    ServerOCR --> SharedAudit[Structural, Quranic ﴿...﴾, Grammar Underline <u>, Layout & QA Gates]
+    SharedAudit --> DocxEngine[shared/typographyDocxCore.ts + POST /api/export-docx]
+    SharedAudit --> GoogleWorkspace[Firebase Client Auth + googleDocsClient.ts / googleDriveClient.ts]
 ```
+
+---
 
 ## 3. Core Subsystems
 
-### A. Pre-flight Inspector (`pdfInspectorCore.ts`)
-- Analyzes document text layer density.
-- Enforces the 10-page chunk rule for Gemini quota safety.
+### A. Public vs. Supervisor Separation (`/src/App.tsx`, `/src/components/Navbar.tsx`, `/src/components/AdminConsolePage.tsx`)
+- **Public Route (`/`)**: Focused workspace for end users with Dropzone, Server Background Jobs tracker, Batch Queue, Output Viewer, and Smart Compiler Studio — completely free of CLI, model telemetry, or deployment clutter.
+- **Supervisor Route (`/?admin=1` or `/#admin`)**: Protected `AdminConsolePage` consolidating the Links Reference (`LINKS_GUIDE.md` download), Team Passcode & HMAC-SHA256 session revocation, Live Gemini Free-Tier Model Pool monitor/probe, Project Custom Instructions (EN/AR), Automation CLI/MCP Hub, and Google Workspace connection controls.
 
-### B. Strict QA Gates Engine (`strictQAGatesEngine.ts`)
-- Evaluates 6 hard gates:
-  1. `punct-spacing`: 0 violations before punctuation.
-  2. `hamza-forms`: Restores lexical hamzas in core vocabulary.
-  3. `lesson-names`: Prevents heading skips (e.g. H1 to H3).
-  4. `table-integrity`: Column uniformity and non-empty rows.
-  5. `quotes-integrity`: Uthmani Quranic bracket verification and quote codes.
-  6. `no-fragmentation`: Continuous prose lines.
+### B. Digital-First Hybrid PDF & Underline Extraction (`server/pdfUnderlineExtractor.ts`, `/api/extract-direct-pdf`)
+- Inspects PDFs digitally first (`CONVERSION_DEFAULTS.quotaOptimization = 'maximum_savings'`), extracting embedded text and geometric vector underline segments (`<u>...</u>`) before ever invoking OCR batches.
+- Scanned documents fall back cleanly to chunked AI OCR batches on either the client runner or persistent disk-backed server jobs.
 
-### C. Heritage Typography DOCX Engine (`docxExporter.ts`)
-- Implements design tokens (`#0B4F2C` Royal Green, `#A67C00` Gold, `#F7F2E3` Ivory shading, `#7B1E1E` Maroon questions).
-- Strictly preserves RTL table formatting and literal numbering.
+### C. Disk-Backed Background Jobs (`server/backgroundJobManager.ts`)
+- Persists uploads, metadata, partial markdown pages, and completed `.docx` builds inside `.jobs/`.
+- Survives closed tabs, browser restarts, and long idle periods; exposes pause, resume from exact page, preview partial results, Word export, and Google Docs export.
+
+### D. Dynamic Free-Tier Model Pool (`server/modelPool.ts`)
+- Dynamically lists active `@google/genai` models via `ai.models.list()`, strips paid/specialty variants (`carbon`, `argon`, `image`, `lyria`, `omni`, `embedding`, `decision`, `-tts`, `-live`, standalone `pro`), rotates through active free-tier text models (`gemini-4-hydrogen`, `gemini-3.8-flash`, `gemini-3.7-flash`, `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.1-flash-lite`, `gemini-2.5-flash`), and enforces `buildSafeThinkingConfig(modelId)` (`LOW`, `MINIMAL`, or omitted on pre-3 models).
+
+### E. Calibrated Bilingual DOCX & Google Workspace Integration (`shared/typographyDocxCore.ts`, `src/utils/googleDocsClient.ts`)
+- Generates RTL/LTR schema-valid Word documents with `<w:bidi/>`, Arabic presentation-form normalization, KaTeX math support, Heritage/Publication typography profiles, and real underline runs (`<u>...</u>`).
+- Authenticates client-side via Firebase Google OAuth with **in-memory token caching only** (no `localStorage`/`sessionStorage` token storage), supporting Drive import and Docs export with explicit confirmation before overwriting existing Docs or deleting Drive files.
+
+### F. Idle Resilience & Team Access Gate (`server/teamAuth.ts`, `src/utils/apiClient.ts`, `src/utils/connectionKeepAlive.ts`)
+- `index.html` freezes `window.fetch`; internal app calls route through `apiFetch()` (automatically retrying `502`/`503`/`504` and attaching `X-Team-Session`).
+- Server configures `keepAliveTimeout = 620s` and `GET /api/ping`, paired with client wake-sync without jarring `window.location.reload()`.

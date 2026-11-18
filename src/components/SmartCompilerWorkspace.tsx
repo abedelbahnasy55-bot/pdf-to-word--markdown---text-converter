@@ -34,6 +34,7 @@ import {
   MessageSquareText,
   PanelRightClose,
   PanelRightOpen,
+  FolderOpen,
 } from 'lucide-react';
 import { ConversionResult, SavedConversion } from '../types';
 import { formatBytes } from '../utils/historyStorage';
@@ -46,6 +47,8 @@ import {
 import { EmbeddedMicroscopicAuditPanel } from './EmbeddedMicroscopicAuditPanel';
 import { ErrorBoundary } from './ErrorBoundary';
 import { CustomSelect, CustomSelectOption } from './ui/CustomSelect';
+import { GoogleDocsExportModal } from './GoogleDocsExportModal';
+import { GoogleDriveBrowserModal } from './GoogleDriveBrowserModal';
 import {
   CompilerSourceItem,
   CompilerPipelineProgress,
@@ -219,6 +222,8 @@ export const SmartCompilerWorkspace: React.FC<SmartCompilerWorkspaceProps> = ({
   const [isExportingDocx, setIsExportingDocx] = useState(false);
   const [isSavingToHistory, setIsSavingToHistory] = useState(false);
   const [copiedOutput, setCopiedOutput] = useState(false);
+  const [isGoogleDocsExportOpen, setIsGoogleDocsExportOpen] = useState(false);
+  const [isDriveImporterOpen, setIsDriveImporterOpen] = useState(false);
 
   // Semantic Search State (Vector Embeddings across uploaded & converted files)
   const [semanticQuery, setSemanticQuery] = useState('');
@@ -1141,6 +1146,15 @@ export const SmartCompilerWorkspace: React.FC<SmartCompilerWorkspaceProps> = ({
               />
             </div>
 
+            <button
+              type="button"
+              onClick={() => setIsDriveImporterOpen(true)}
+              className="mt-2 w-full py-1.5 px-3 rounded-lg border border-slate-200 dark:border-[#2A3142] bg-white dark:bg-[#1B202C] hover:bg-slate-50 dark:hover:bg-[#232938] text-[11px] font-semibold text-slate-700 dark:text-slate-200 flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+            >
+              <FolderOpen className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>استيراد من Google Drive / Docs</span>
+            </button>
+
             {availableSources.length > 3 && (
               <div className="relative mt-2.5">
                 <input
@@ -1878,6 +1892,16 @@ export const SmartCompilerWorkspace: React.FC<SmartCompilerWorkspaceProps> = ({
 
                   <button
                     type="button"
+                    onClick={() => setIsGoogleDocsExportOpen(true)}
+                    className="px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-[#1E2433] hover:bg-slate-800 dark:hover:bg-[#272F42] text-white text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+                    title="إنشاء أو تحديث مستند منسق على Google Docs"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Google Docs</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={handleExportWord}
                     disabled={isExportingDocx}
                     className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer transition-colors"
@@ -1895,6 +1919,29 @@ export const SmartCompilerWorkspace: React.FC<SmartCompilerWorkspaceProps> = ({
           )}
         </section>
       </div>
+
+      {compiledAnthology && (
+        <GoogleDocsExportModal
+          isOpen={isGoogleDocsExportOpen}
+          onClose={() => setIsGoogleDocsExportOpen(false)}
+          title={compiledAnthology.result.title || 'تجميعة الاستوديو'}
+          markdown={compiledAnthology.result.markdown}
+          isRtl={compiledAnthology.result.textDirection === 'rtl'}
+          initialFontProfile={fontProfile}
+          onExportSuccess={(res) => {
+            setToastMessage(`تم حفظ التجميعة في Google Docs باسم "${res.name}" بنجاح!`);
+            setTimeout(() => setToastMessage(null), 5000);
+          }}
+        />
+      )}
+
+      <GoogleDriveBrowserModal
+        isOpen={isDriveImporterOpen}
+        onClose={() => setIsDriveImporterOpen(false)}
+        onImportFiles={(files) => {
+          if (files.length > 0) handleFilesAdded(files);
+        }}
+      />
     </div>
   );
 };

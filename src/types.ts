@@ -39,7 +39,7 @@ export interface ConversionOptions {
  * words it cannot actually see.
  */
 export const CONVERSION_DEFAULTS: ConversionOptions = {
-  quotaOptimization: 'high_fidelity',
+  quotaOptimization: 'maximum_savings',
 };
 
 export interface QuranErrorItem {

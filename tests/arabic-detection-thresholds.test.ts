@@ -32,8 +32,7 @@ import { AR_MARKDOWN_FIXTURE, EN_MARKDOWN_FIXTURE, AR_FOOTNOTE_FIXTURE } from '.
  * Line numbers are deliberately NOT snapshotted — see the anchor comment in each section.
  */
 const B2 = extractRhs('src/App.tsx', 'const isAr = (err.partialMarkdown');
-const B3 = extractRhs('src/App.tsx', 'const isArabic = (finalMarkdown');
-const B4 = extractRhs('src/App.tsx', 'const isAr = (currentExtractedMarkdown');
+const B3 = extractRhs('src/App.tsx', 'const isAr = (String(data.partialMarkdown)');
 const B5 = extractFunction<(text: string) => boolean>(
   'src/utils/layoutIntegrityCore.ts',
   'function isArabicText',
@@ -49,8 +48,7 @@ const EN1 = 'a';
 
 const countFamily = [
   { id: 'B2 App.tsx (err.partialMarkdown)', expr: B2, bind: (s: string) => ({ err: { partialMarkdown: s } }) },
-  { id: 'B3 App.tsx (finalMarkdown)', expr: B3, bind: (s: string) => ({ finalMarkdown: s }) },
-  { id: 'B4 App.tsx (currentExtractedMarkdown)', expr: B4, bind: (s: string) => ({ currentExtractedMarkdown: s }) },
+  { id: 'B3 App.tsx (data.partialMarkdown)', expr: B3, bind: (s: string) => ({ data: { partialMarkdown: s } }) },
 ];
 
 /** True when every count-family copy agrees (they must: the text is identical). */
@@ -62,12 +60,11 @@ const pipelineSays = (s: string): boolean => B1.fn({ isRightToLeftText: B6, fina
 const mix = (arabic: number, latin: number): string => AR1.repeat(arabic) + EN1.repeat(latin);
 
 describe('B. provenance: three rules, not one', () => {
-  it('the three surviving count-family copies read the same literal, three different bindings', () => {
+  it('the surviving count-family copies read the > 20 rule', () => {
     expect({
       B2: { file: 'src/App.tsx', anchor: 'const isAr = (err.partialMarkdown', expr: B2.expr, vars: B2.vars },
-      B3: { file: 'src/App.tsx', anchor: 'const isArabic = (finalMarkdown', expr: B3.expr, vars: B3.vars },
-      B4: { file: 'src/App.tsx', anchor: 'const isAr = (currentExtractedMarkdown', expr: B4.expr, vars: B4.vars },
-      distinctExprs: new Set([B2.expr, B3.expr, B4.expr]).size,
+      B3: { file: 'src/App.tsx', anchor: 'const isAr = (String(data.partialMarkdown)', expr: B3.expr, vars: B3.vars },
+      distinctExprs: new Set([B2.expr, B3.expr]).size,
     }).toMatchInlineSnapshot(`
       {
         "B2": {
@@ -79,22 +76,14 @@ describe('B. provenance: three rules, not one', () => {
           ],
         },
         "B3": {
-          "anchor": "const isArabic = (finalMarkdown",
-          "expr": "(finalMarkdown.match(/[\\u0600-\\u06FF]/g) || []).length > 20",
+          "anchor": "const isAr = (String(data.partialMarkdown)",
+          "expr": "(String(data.partialMarkdown).match(/[\\u0600-\\u06FF]/g) || []).length > 20",
           "file": "src/App.tsx",
           "vars": [
-            "finalMarkdown",
+            "data",
           ],
         },
-        "B4": {
-          "anchor": "const isAr = (currentExtractedMarkdown",
-          "expr": "(currentExtractedMarkdown.match(/[\\u0600-\\u06FF]/g) || []).length > 20",
-          "file": "src/App.tsx",
-          "vars": [
-            "currentExtractedMarkdown",
-          ],
-        },
-        "distinctExprs": 3,
+        "distinctExprs": 2,
       }
     `);
   });
@@ -178,9 +167,95 @@ describe('B. provenance: three rules, not one', () => {
        * converts 149 characters to 0 while leaving every other codepoint untouched, and
        * still resolves the sacred ligature U+FDF2 (ﷲ) to the correct Allah.
        */
+      /**
+       * Common damaged OCR mojibake, reversed punctuation, broken ligatures, and font artifacts
+       */
+      const DAMAGED_OCR_REPLACEMENTS: [RegExp, string][] = [
+        // Microsoft proprietary font PUA honorifics -> standard Arabic prose
+        [/\\uF074/g, " (رضي الله عنه) "],
+        [/\\uF072/g, " (صلى الله عليه وسلم) "],
+        [/\\uF073/g, " (عليه السلام) "],
+        [/\\uF075/g, " (رحمه الله) "],
+        [/\\uF076/g, " (عز وجل) "],
+        [/\\uFDFA/g, " صلى الله عليه وسلم "],
+        [/\\uFDFB/g, " جل جلاله "],
+        [/\\uFDF0/g, " صلعم "],
+        [/\\uFDF1/g, " عليه السلام "],
+        [/\\uFDFD/g, " بسم الله الرحمن الرحيم "],
+
+        // Specific OCR artifacts and corrupted Latin/Arabic transitions
+        [/يفid/g, "يفيد"],
+        [/الحكم\\);/g, "الحكم)؛"],
+        [/([أ-ي])؛([a-zA-Z])/g, "$1؛ $2"],
+
+        // Mojibake and encoding corruption (e.g. windows-1256 / UTF-8 misinterpretation)
+        [/Ø§Ù„/g, "ال"],
+        [/Ø£Ù/g, "أ"],
+        [/Ø¥Ù/g, "إ"],
+        [/ÙÙŠ/g, "في"],
+        [/Ù…Ù†/g, "من"],
+        [/Ø¹Ù„Ù‰/g, "على"],
+        [/Ù‡Ø°Ø§/g, "هذا"],
+        [/Ø§Ù„Ù„Ù‡/g, "الله"],
+        [/Ø±Ø¶ÙŠ/g, "رضي"],
+        [/Ø¹Ù†Ù‡/g, "عنه"],
+        [/ØµÙ„Ù‰/g, "صلى"],
+        [/Ø¹Ù„ÙŠÙ‡/g, "عليه"],
+        [/ÙˆØ³Ù„Ù…/g, "وسلم"],
+        [/Ø¨Ù†/g, "بن"],
+        [/Ø¹Ø¨Ø¯/g, "عبد"],
+
+        // Inverted / misplaced punctuation inside Arabic passages (same line only)
+        [/([أ-ي])[ \\t]*\\?[ \\t]*([أ-ي])/g, "$1؟ $2"], // English question mark between Arabic words
+        [/([أ-ي])[ \\t]*;([أ-ي])/g, "$1؛ $2"], // English semicolon between Arabic words
+        [/([أ-ي])[ \\t]*,([أ-ي])/g, "$1، $2"], // English comma between Arabic words
+        [/([أ-ي])[ \\t]*\\?$/gm, "$1؟"], // English question mark at end of Arabic line
+        [/([أ-ي])[ \\t]*;$/gm, "$1؛"], // English semicolon at end of Arabic line
+        [/([أ-ي])[ \\t]*,$/gm, "$1،"], // English comma at end of Arabic line
+
+        // Common broken OCR character confusions strictly inside Arabic words (never corrupt Markdown table pipes)
+        [/([أ-ي])l([أ-ي])/g, "$1ا$2"], // Latin lowercase 'l' misrecognized as Arabic Alef
+        [/([أ-ي])1([أ-ي])/g, "$1ا$2"], // Number 1 misrecognized as Arabic Alef inside word
+        [/([أ-ي])0([أ-ي])/g, "$1ه$2"], // Digit 0 misrecognized as Ha inside word
+        [/([أ-ي])\\|([أ-ي])/g, "$1ا$2"], // Pipe symbol glued inside an Arabic word misrecognized as Alef
+
+        // Tatweel / Kashida abuse from OCR (excessive stretching like ســـــــــلام)
+        [/ـ{2,}/g, "ـ"],
+
+        // Broken or orphaned Arabic diacritics / tashkeel floating on whitespace
+        [/\\s+([\\u064B-\\u065F\\u0670])/g, "$1"],
+
+        // Damaged quotes and brackets
+        [/«\\s+/g, "«"],
+        [/\\s+»/g, "»"],
+        [/\\(\\s+/g, "("],
+        [/\\s+\\)/g, ")"],
+
+        // Clean Zero-Width, replacement characters (), and BOM artifacts that cause rendering glitches
+        [/[\\u200B\\u200C\\u200D\\uFEFF\\uFFFD]/g, ""],
+
+        // Repeated garbage symbols from poor scans like ?????? or .....
+        [/\\?{2,}/g, "؟"],
+        [/؛{2,}/g, "؛"],
+        [/،{2,}/g, "،"],
+        [/_{3,}/g, "___"],
+        [/\\.{6,}/g, "..."],
+      ];
+
+      /**
+       * Converts Arabic Presentation Forms back to standard Arabic letters and sanitizes OCR symbols.
+       */
       export function toStandardArabic(text: string): string {
         if (!text) return text;
-        return text.replace(ARABIC_PRESENTATION_FORMS, (char) => char.normalize('NFKC'));
+        // 1. Normalize Presentation Forms to canonical Arabic
+        let cleaned = text.replace(ARABIC_PRESENTATION_FORMS, (char) => char.normalize('NFKC'));
+
+        // 2. Apply comprehensive OCR and artifact replacements
+        for (const [pattern, replacement] of DAMAGED_OCR_REPLACEMENTS) {
+          cleaned = cleaned.replace(pattern, replacement);
+        }
+
+        return cleaned;
       }
 
       /** Counts characters in the Arabic Unicode range. */
@@ -388,7 +463,7 @@ describe('B. the seven requested Arabic ratios', () => {
     `);
   });
 
-  it('all three count-family copies return the same verdict on every case', () => {
+  it('all surviving count-family copies return the same verdict on every case', () => {
     expect(
       cases.map((c) => {
         const text = mix(c.arabic, c.latin);
@@ -399,35 +474,28 @@ describe('B. the seven requested Arabic ratios', () => {
         [
           false,
           false,
-          false,
         ],
         [
           false,
           false,
-          false,
         ],
         [
-          false,
           false,
           false,
         ],
         [
           true,
           true,
+        ],
+        [
+          true,
           true,
         ],
         [
           true,
           true,
-          true,
         ],
         [
-          true,
-          true,
-          true,
-        ],
-        [
-          true,
           true,
           true,
         ],
@@ -856,7 +924,6 @@ describe('B. all detectors on the shared fixtures', () => {
           "perCountCopy": [
             true,
             true,
-            true,
           ],
           "ratio_canonical": true,
           "ratio_layoutCore": true,
@@ -868,7 +935,6 @@ describe('B. all detectors on the shared fixtures', () => {
           "label": "EN_MARKDOWN_FIXTURE",
           "latinChars": 352,
           "perCountCopy": [
-            false,
             false,
             false,
           ],
@@ -884,7 +950,6 @@ describe('B. all detectors on the shared fixtures', () => {
           "perCountCopy": [
             true,
             true,
-            true,
           ],
           "ratio_canonical": true,
           "ratio_layoutCore": true,
@@ -896,7 +961,6 @@ describe('B. all detectors on the shared fixtures', () => {
           "label": "EN fixture with an Arabic header pasted in",
           "latinChars": 352,
           "perCountCopy": [
-            false,
             false,
             false,
           ],

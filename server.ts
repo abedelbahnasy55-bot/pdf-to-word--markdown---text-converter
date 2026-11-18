@@ -120,16 +120,6 @@ function getGeminiClient(): GoogleGenAI {
   return aiClient;
 }
 
-// Audit & Inspection Vault Setup
-const AUDIT_VAULT_DIR = path.join(PROJECT_ROOT, "storage", "audit");
-try {
-  if (!fs.existsSync(AUDIT_VAULT_DIR)) {
-    fs.mkdirSync(AUDIT_VAULT_DIR, { recursive: true });
-  }
-} catch (e) {
-  console.warn("Could not create AUDIT_VAULT_DIR:", e);
-}
-
 // Team Passcode Auth Gate & Public Share Config (registered before protected routes)
 registerTeamAuth(app, PROJECT_ROOT);
 
@@ -158,12 +148,22 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+const CANONICAL_PUBLISHED_ORIGIN = "https://pdf-to-word-markdown-text-converter.ai.studio";
+
 /**
- * Resolves the canonical public origin URL, correctly handling reverse proxy headers (X-Forwarded-Host).
- * Falls back to the canonical public domain to ensure external clients always receive a reachable URL.
+ * Resolves the canonical public origin URL, preferring the published .ai.studio domain
+ * when running in AI Studio / Cloud Run so external clients always receive a reachable URL.
  */
 function getPublicOrigin(req: express.Request): string {
-  return resolvePublicUrlInfo(req).sharedPublicOrigin;
+  const info = resolvePublicUrlInfo(req);
+  if (
+    info.currentOrigin.includes(".ai.studio") ||
+    info.currentOrigin.includes("wpsct27fdufcpry5x6ikjn") ||
+    info.sharedPublicOrigin.includes("wpsct27fdufcpry5x6ikjn")
+  ) {
+    return CANONICAL_PUBLISHED_ORIGIN;
+  }
+  return info.sharedPublicOrigin;
 }
 
 // Full API Documentation & Contract Specification
@@ -172,14 +172,22 @@ app.get("/api/info", (req, res) => {
   const origin = getPublicOrigin(req);
 
   res.json({
-    name: "PDF to Word & Markdown Converter API",
-    version: "1.1.0",
+    name: "Arabic & Bilingual Document Studio API",
+    version: "2.1.0",
     serverOrigin: origin,
     endpoints: {
       health: { method: "GET", path: "/api/health" },
+      ping: { method: "GET", path: "/api/ping" },
       info: { method: "GET", path: "/api/info" },
+      extractDirectPdf: { method: "POST", path: "/api/extract-direct-pdf" },
       convertPdf: { method: "POST", path: "/api/convert-pdf" },
+      exportDocx: { method: "POST", path: "/api/export-docx" },
+      jobs: { method: "GET/POST", path: "/api/jobs" },
+      modelsStatus: { method: "GET", path: "/api/models/status" },
+      authStatus: { method: "GET", path: "/api/auth/status" },
+      compiler: { method: "POST", path: "/api/compiler/*" },
       cliDownload: { method: "GET", path: "/api/cli/download/:scriptName" },
+      linksGuideDownload: { method: "GET", path: "/api/links-guide/download" },
     },
     convertPdfContract: {
       method: "POST",
@@ -226,88 +234,16 @@ app.get("/api/info", (req, res) => {
   });
 });
 
-// Audit Vault: Save Inspection Session
-app.post("/api/audit/save-session", (req, res) => {
-  try {
-    const { filename, sourceText, convertedMarkdown, bookTitle, metadata } = req.body;
-    const sessionId = `audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const sessionMeta = {
-      id: sessionId,
-      filename: filename || "book.pdf",
-      bookTitle: bookTitle || "فقه حنفي ثانية ثانوي أزهري",
-      timestamp: Date.now(),
-      date: new Date().toISOString(),
-      sourceLength: (sourceText || "").length,
-      markdownLength: (convertedMarkdown || "").length,
-      sourceWords: (sourceText || "").split(/\s+/).filter(Boolean).length,
-      targetWords: (convertedMarkdown || "").split(/\s+/).filter(Boolean).length,
-      metadata: metadata || {},
-    };
-
-    fs.writeFileSync(path.join(AUDIT_VAULT_DIR, `${sessionId}_meta.json`), JSON.stringify(sessionMeta, null, 2), "utf-8");
-    if (sourceText) {
-      fs.writeFileSync(path.join(AUDIT_VAULT_DIR, `${sessionId}_source.txt`), sourceText, "utf-8");
-    }
-    if (convertedMarkdown) {
-      fs.writeFileSync(path.join(AUDIT_VAULT_DIR, `${sessionId}_converted.md`), convertedMarkdown, "utf-8");
-    }
-
-    // Update latest pointer
-    fs.writeFileSync(
-      path.join(AUDIT_VAULT_DIR, "latest_session.json"),
-      JSON.stringify({
-        ...sessionMeta,
-        sourceText: sourceText || "",
-        convertedMarkdown: convertedMarkdown || "",
-      }, null, 2),
-      "utf-8"
-    );
-
-    return res.json({
-      success: true,
-      sessionId,
-      sessionMeta,
-    });
-  } catch (err: any) {
-    console.error("Error saving audit session:", err);
-    return res.status(500).json({ success: false, error: err?.message || "Failed to save audit session" });
+// Downloadable Links & Deployment Reference Guide
+app.get("/api/links-guide/download", (_req, res) => {
+  const guidePath = path.join(PROJECT_ROOT, "LINKS_GUIDE.md");
+  if (!fs.existsSync(guidePath)) {
+    return res.status(404).json({ success: false, error: "ملف دليل الروابط غير موجود." });
   }
-});
-
-// Audit Vault: Get Latest Session
-app.get("/api/audit/latest", (_req, res) => {
-  try {
-    const latestPath = path.join(AUDIT_VAULT_DIR, "latest_session.json");
-    if (fs.existsSync(latestPath)) {
-      const data = JSON.parse(fs.readFileSync(latestPath, "utf-8"));
-      return res.json({ success: true, session: data });
-    }
-    return res.json({ success: false, message: "No active audit session found yet" });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, error: err?.message });
-  }
-});
-
-// Audit Vault: List All Sessions
-app.get("/api/audit/sessions", (_req, res) => {
-  try {
-    if (!fs.existsSync(AUDIT_VAULT_DIR)) {
-      return res.json({ success: true, sessions: [] });
-    }
-    const files = fs.readdirSync(AUDIT_VAULT_DIR);
-    const metaFiles = files.filter(f => f.endsWith("_meta.json"));
-    const sessions = metaFiles.map(f => {
-      try {
-        return JSON.parse(fs.readFileSync(path.join(AUDIT_VAULT_DIR, f), "utf-8"));
-      } catch {
-        return null;
-      }
-    }).filter(Boolean);
-
-    return res.json({ success: true, sessions });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, error: err?.message });
-  }
+  const content = fs.readFileSync(guidePath, "utf-8");
+  res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+  res.setHeader("Content-Disposition", 'attachment; filename="LINKS_GUIDE.md"');
+  return res.send(content);
 });
 
 // MCP & CLI Tools Info
@@ -359,10 +295,15 @@ app.get("/api/cli/download/:scriptName", async (req, res) => {
   const currentOrigin = getPublicOrigin(req);
 
   const replaceOrigin = (code: string) => {
-    return code.replace(
-      /https:\/\/ais-(?:dev|pre)-wpsct27fdufcpry5x6ikjn-685461883733\.europe-west2\.run\.app/g,
-      currentOrigin
-    );
+    return code
+      .replace(
+        /https:\/\/ais-(?:dev|pre)-wpsct27fdufcpry5x6ikjn-685461883733\.europe-west2\.run\.app/g,
+        currentOrigin
+      )
+      .replace(
+        /https:\/\/pdf-to-word-markdown-text-converter\.ai\.studio/g,
+        currentOrigin
+      );
   };
 
   // Support full ZIP distribution bundle containing all necessary files and dependencies
@@ -1078,30 +1019,6 @@ OUTPUT DIRECTLY AS PRISTINE MARKDOWN ONLY (Do not wrap in JSON).`;
       markdown: markdownContent,
       plainText: cleanedPlainText,
     };
-
-    // Persist conversion session to audit vault automatically for forensic inspection
-    try {
-      const sessionId = `audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      const auditMeta = {
-        id: sessionId,
-        filename: filename || "document.pdf",
-        title: docTitle,
-        timestamp: Date.now(),
-        date: new Date().toISOString(),
-        markdownLength: markdownContent.length,
-        wordsCount: markdownContent.split(/\s+/).filter(Boolean).length,
-      };
-      fs.writeFileSync(path.join(AUDIT_VAULT_DIR, `${sessionId}_meta.json`), JSON.stringify(auditMeta, null, 2), "utf-8");
-      fs.writeFileSync(path.join(AUDIT_VAULT_DIR, `${sessionId}_converted.md`), markdownContent, "utf-8");
-      fs.writeFileSync(
-        path.join(AUDIT_VAULT_DIR, "latest_session.json"),
-        JSON.stringify({ ...auditMeta, convertedMarkdown: markdownContent }, null, 2),
-        "utf-8"
-      );
-      console.log(`[Audit Vault] Successfully saved conversion audit session: ${sessionId} for ${filename}`);
-    } catch (auditErr) {
-      console.warn("[Audit Vault] Warning archiving session to disk:", auditErr);
-    }
 
     res.json({
       success: true,

@@ -118,18 +118,39 @@ const PROTOCOL_VERSION = '2024-11-05';
 
 const DEFAULT_SERVER_URL = (
   process.env.CONVERTER_SERVER_URL ||
-  'https://ais-dev-wpsct27fdufcpry5x6ikjn-685461883733.europe-west2.run.app'
+  'https://pdf-to-word-markdown-text-converter.ai.studio'
 ).replace(/\/+$/, '');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const TEAM_ACCESS_CODE = process.env.TEAM_ACCESS_CODE || '';
+
+let cachedTeamSessionToken = '';
+async function getTeamAuthHeaders() {
+  if (!TEAM_ACCESS_CODE) return {};
+  if (cachedTeamSessionToken) return { 'X-Team-Session': cachedTeamSessionToken };
+  try {
+    const authRes = await fetch(`${DEFAULT_SERVER_URL}/api/auth/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: TEAM_ACCESS_CODE, rememberDevice: true }),
+    });
+    const authJson = await authRes.json().catch(() => null);
+    if (authRes.ok && authJson?.sessionToken) {
+      cachedTeamSessionToken = authJson.sessionToken;
+      return { 'X-Team-Session': cachedTeamSessionToken };
+    }
+  } catch {}
+  return {};
+}
 
 // Multi-model matrix prioritized by free-tier headroom & modern availability
 const OCR_MODELS_FALLBACK = [
   'gemini-4-hydrogen',
-  'gemini-3.1-flash-lite',
-  'gemini-3.5-flash-lite',
-  'gemini-3.5-flash',
   'gemini-3.8-flash',
-  'gemini-flash-latest',
+  'gemini-3.7-flash',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-2.5-flash',
 ];
 
 const MASTER_OCR_SYSTEM_PROMPT = `You are a master document transcription, OCR, and typesetting specialist for all languages and fields (English books, scientific & mathematical publications, STEM, literature, as well as classical and modern Arabic books, Islamic texts, Azhar curricula, and exam papers).
@@ -840,9 +861,10 @@ async function convertChunkResilient(base64Data, rawBytes, filename, mimeType = 
       const controller = new AbortController();
       const timeoutHandle = setTimeout(() => controller.abort(), 180000);
       try {
+        const teamHeaders = await getTeamAuthHeaders();
         const res = await fetch(`${DEFAULT_SERVER_URL}/api/convert-pdf`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...teamHeaders },
           signal: controller.signal,
           body: JSON.stringify({
             pdfBase64: base64Data,

@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { extractDecl } from './helpers/inlineExtract';
 
 /**
@@ -24,7 +24,16 @@ const C4 = extractDecl<(ts: number) => string>('src/components/HistoryDrawer.tsx
 /** Local-time timestamps, so the assertions do not depend on the runner's timezone. */
 const at = (y: number, m: number, d: number, hh = 10, mm = 5): number => new Date(y, m - 1, d, hh, mm).getTime();
 
-const now = new Date();
+const now = new Date(2026, 9, 23, 12, 0, 0);
+beforeAll(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(now);
+});
+
+afterAll(() => {
+  vi.useRealTimers();
+});
+
 const TODAY = at(now.getFullYear(), now.getMonth() + 1, now.getDate());
 const TODAY_MIDNIGHT = at(now.getFullYear(), now.getMonth() + 1, now.getDate(), 0, 0);
 const TODAY_LAST_MIN = at(now.getFullYear(), now.getMonth() + 1, now.getDate(), 23, 59);

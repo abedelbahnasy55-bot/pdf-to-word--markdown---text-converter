@@ -6,10 +6,11 @@ import { ProcessingOverlay } from './components/ProcessingOverlay';
 import { OutputViewer } from './components/OutputViewer';
 import { HistoryList } from './components/HistoryList';
 import { HistoryDrawer } from './components/HistoryDrawer';
-import { AgentCliHubPage } from './components/AgentCliHubPage';
 import { SmartCompilerWorkspace } from './components/SmartCompilerWorkspace';
 import { TeamAccessGate } from './components/TeamAccessGate';
-import { TeamShareModal, type TeamAuthStatusState } from './components/TeamShareModal';
+import { AdminConsolePage, type TeamAuthStatusState } from './components/AdminConsolePage';
+import { GoogleDriveBrowserModal } from './components/GoogleDriveBrowserModal';
+import { GoogleDocsExportModal } from './components/GoogleDocsExportModal';
 import {
   CONVERSION_DEFAULTS,
   ConversionOptions,
@@ -130,9 +131,45 @@ function formatRelativeTime(timestamp?: number, now: number = Date.now()): strin
   return `منذ ${diffDays} يوماً`;
 }
 
+function detectAdminModeFromUrl(): boolean {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('admin') === '1' || window.location.hash === '#admin';
+  } catch {
+    return false;
+  }
+}
+
 export default function App() {
   const { theme, toggleTheme } = useTheme();
-  const [activeView, setActiveView] = useState<'home' | 'viewer' | 'agent-hub' | 'compiler'>('home');
+  const [activeView, setActiveView] = useState<'home' | 'viewer' | 'compiler'>('home');
+  const [isAdminMode, setIsAdminMode] = useState<boolean>(() => detectAdminModeFromUrl());
+
+  useEffect(() => {
+    const syncAdminFromUrl = () => {
+      setIsAdminMode(detectAdminModeFromUrl());
+    };
+    window.addEventListener('popstate', syncAdminFromUrl);
+    window.addEventListener('hashchange', syncAdminFromUrl);
+    return () => {
+      window.removeEventListener('popstate', syncAdminFromUrl);
+      window.removeEventListener('hashchange', syncAdminFromUrl);
+    };
+  }, []);
+
+  const handleExitAdminMode = useCallback(() => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('admin');
+      if (url.hash === '#admin') {
+        url.hash = '';
+      }
+      window.history.pushState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    } catch {}
+    setIsAdminMode(false);
+    setActiveView('home');
+  }, []);
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingFileName, setProcessingFileName] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -143,10 +180,15 @@ export default function App() {
   const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
   const [activeSavedId, setActiveSavedId] = useState<string | null>(null);
 
-  // Team Access Lock & Public Share state
+  // Team Access Lock & Google Workspace modal state
   const [authStatus, setAuthStatus] = useState<TeamAuthStatusState | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [isTeamShareOpen, setIsTeamShareOpen] = useState(false);
+  const [isDriveBrowserOpen, setIsDriveBrowserOpen] = useState(false);
+  const [quickGoogleDocsTarget, setQuickGoogleDocsTarget] = useState<{
+    title: string;
+    markdown: string;
+    isRtl: boolean;
+  } | null>(null);
 
   // Server-side persistent background jobs (continue even when tab/browser/device closes)
   const [serverJobs, setServerJobs] = useState<ServerJobMeta[]>([]);
@@ -781,6 +823,37 @@ export default function App() {
       setTimeout(() => setNotificationMessage(null), 4000);
     } catch (err: any) {
       setErrorMessage(err?.message || 'تعذر تنزيل ملف Word من الخادم.');
+    } finally {
+      setLoadingServerJobId(null);
+    }
+  };
+
+  const handleOpenServerJobGoogleDocs = async (job: ServerJobMeta) => {
+    setLoadingServerJobId(job.id);
+    setErrorMessage(null);
+    try {
+      const resp = await apiFetch(`/api/jobs/${encodeURIComponent(job.id)}`);
+      const data = await resp.json();
+      if (!resp.ok || !data?.success) {
+        throw new Error(data?.error || 'تعذر تحميل نص المهمة للتصدير إلى مستندات Google.');
+      }
+      const markdown = String(data.result?.markdown || data.partialMarkdown || '').trim();
+      if (!markdown) {
+        throw new Error('لا يوجد محتوى جاهز للتصدير في هذه المهمة.');
+      }
+      const isRtl =
+        data.result?.textDirection === 'rtl' ||
+        Boolean(data.result?.hasArabicText) ||
+        job.direction === 'rtl' ||
+        (markdown.match(/[\u0600-\u06FF]/g) || []).length > 10;
+
+      setQuickGoogleDocsTarget({
+        title: data.result?.title || job.title || job.fileName.replace(/\.[^/.]+$/, ''),
+        markdown,
+        isRtl,
+      });
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'تعذر تجهيز المستند للتصدير إلى Google Docs.');
     } finally {
       setLoadingServerJobId(null);
     }
@@ -1537,20 +1610,18 @@ export default function App() {
         onOpenBatch={() => setActiveView('home')}
         isShowingBatch={activeView === 'home' && Boolean(batchQueue && batchQueue.length > 0)}
         onRestorePreviousBatch={handleRestoreSavedHistoryToBatch}
-        onOpenAgentCliHub={() => setActiveView(activeView === 'agent-hub' ? 'home' : 'agent-hub')}
-        isShowingAgentHub={activeView === 'agent-hub'}
         onOpenSmartCompiler={() => setActiveView(activeView === 'compiler' ? 'home' : 'compiler')}
         isShowingSmartCompiler={activeView === 'compiler'}
         theme={theme}
         onToggleTheme={toggleTheme}
         activeServerJobsCount={activeServerJobsCount}
-        onOpenTeamShare={() => setIsTeamShareOpen(true)}
-        isTeamLocked={Boolean(authStatus?.lockEnabled)}
+        isAdminMode={isAdminMode}
+        onExitAdmin={handleExitAdminMode}
       />
 
       <main
         className={
-          activeView === 'compiler'
+          !isAdminMode && activeView === 'compiler'
             ? 'flex-1 w-full'
             : 'flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-10 flex flex-col justify-center'
         }
@@ -1592,8 +1663,18 @@ export default function App() {
           </div>
         )}
 
+        {/* Dedicated Supervisor / Admin Link View (?admin=1 or #admin) */}
+        {isAdminMode && (
+          <AdminConsolePage
+            authStatus={authStatus}
+            onAuthStatusUpdated={refreshAuthStatus}
+            onExitAdmin={handleExitAdminMode}
+            onOpenDriveBrowser={() => setIsDriveBrowserOpen(true)}
+          />
+        )}
+
         {/* State 1: Single file Processing Loader */}
-        {isProcessing && (
+        {!isAdminMode && isProcessing && (
           <ProcessingOverlay
             fileName={processingFileName}
             progress={progress}
@@ -1615,13 +1696,8 @@ export default function App() {
           />
         )}
 
-        {/* State 1.5: Dedicated Single-Page Automation & CLI Hub */}
-        {!isProcessing && activeView === 'agent-hub' && (
-          <AgentCliHubPage onBack={() => setActiveView('home')} />
-        )}
-
         {/* State 1.75: Editorial Compilation Studio & Semantic Search */}
-        {!isProcessing && activeView === 'compiler' && (
+        {!isAdminMode && !isProcessing && activeView === 'compiler' && (
           <SmartCompilerWorkspace
             batchQueue={batchQueue}
             savedItems={savedItems}
@@ -1647,7 +1723,7 @@ export default function App() {
         )}
 
         {/* State 2: Conversion Results */}
-        {!isProcessing && activeView === 'viewer' && conversionResult && (
+        {!isAdminMode && !isProcessing && activeView === 'viewer' && conversionResult && (
           <OutputViewer
             result={conversionResult}
             onUpdateResult={(updated) => {
@@ -1663,7 +1739,7 @@ export default function App() {
         )}
 
         {/* State 3: Home View */}
-        {!isProcessing && activeView === 'home' && (
+        {!isAdminMode && !isProcessing && activeView === 'home' && (
           <div className="space-y-6">
             <div className="text-center space-y-1.5 max-w-xl mx-auto">
               <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
@@ -1828,6 +1904,16 @@ export default function App() {
                               <button
                                 type="button"
                                 disabled={isBusy}
+                                onClick={() => handleOpenServerJobGoogleDocs(job)}
+                                className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                title="تصدير إلى مستندات Google Docs"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                                <span>Google Docs</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isBusy}
                                 onClick={() => handleOpenServerJobResult(job)}
                                 className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-[#2A3142] bg-white dark:bg-[#1B202C] hover:bg-slate-50 dark:hover:bg-[#232938] text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50"
                               >
@@ -1952,6 +2038,7 @@ export default function App() {
                     <Dropzone
                       onStartConversion={handleStartConversion}
                       isProcessing={isProcessing}
+                      onOpenGoogleDrive={() => setIsDriveBrowserOpen(true)}
                     />
                   )}
 
@@ -2577,6 +2664,21 @@ export default function App() {
                                     </button>
                                     <button
                                       type="button"
+                                      onClick={() =>
+                                        setQuickGoogleDocsTarget({
+                                          title: item.result!.title || item.name.replace(/\.[^/.]+$/, ''),
+                                          markdown: item.result!.markdown || item.result!.plainText || '',
+                                          isRtl: item.result!.textDirection === 'rtl' || Boolean(item.result!.hasArabicText),
+                                        })
+                                      }
+                                      className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer"
+                                      title="تصدير إلى مستندات Google Docs"
+                                    >
+                                      <FileText className="w-3.5 h-3.5" />
+                                      <span>Google Docs</span>
+                                    </button>
+                                    <button
+                                      type="button"
                                       onClick={() => handleViewBatchItemResult(item.result!)}
                                       className="px-2.5 py-1.5 bg-white dark:bg-[#1B202C] hover:bg-slate-100 dark:hover:bg-[#232938] text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-lg border border-slate-200 dark:border-[#2A3142] transition-colors flex items-center gap-1 cursor-pointer"
                                       title="معاينة محتوى المستند"
@@ -2617,6 +2719,7 @@ export default function App() {
                       <Dropzone
                         onStartConversion={handleStartConversion}
                         isProcessing={isProcessing}
+                        onOpenGoogleDrive={() => setIsDriveBrowserOpen(true)}
                       />
                     )
                   )}
@@ -2656,12 +2759,33 @@ export default function App() {
         className="hidden"
       />
 
-      {/* Team Public Link, Passcode & Active Free-Tier Models Modal */}
-      <TeamShareModal
-        isOpen={isTeamShareOpen}
-        onClose={() => setIsTeamShareOpen(false)}
-        authStatus={authStatus}
-        onAuthStatusUpdated={refreshAuthStatus}
+      {/* Google Drive / Docs Importer Modal */}
+      <GoogleDriveBrowserModal
+        isOpen={isDriveBrowserOpen}
+        onClose={() => setIsDriveBrowserOpen(false)}
+        onImportFiles={(files) => {
+          if (files.length > 0) {
+            if (isAdminMode) {
+              handleExitAdminMode();
+            } else {
+              setActiveView('home');
+            }
+            handleStartConversion(files);
+          }
+        }}
+      />
+
+      {/* Quick Google Docs Exporter Modal for Background Jobs & Batch Queue Items */}
+      <GoogleDocsExportModal
+        isOpen={Boolean(quickGoogleDocsTarget)}
+        onClose={() => setQuickGoogleDocsTarget(null)}
+        title={quickGoogleDocsTarget?.title || 'مستند الاستوديو'}
+        markdown={quickGoogleDocsTarget?.markdown || ''}
+        isRtl={quickGoogleDocsTarget?.isRtl ?? true}
+        onExportSuccess={(res) => {
+          setNotificationMessage(`تم تصدير "${res.name}" إلى مستندات Google Docs بنجاح.`);
+          setTimeout(() => setNotificationMessage(null), 5000);
+        }}
       />
     </div>
   );

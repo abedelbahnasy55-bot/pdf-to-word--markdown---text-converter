@@ -25,9 +25,43 @@ def parse_arguments():
     parser.add_argument("--input", "-i", required=True, help="مسار مجلد الكتب (PDF)")
     parser.add_argument("--output", "-o", default="./converted_output", help="مسار مجلد حفظ المخرجات وحزم ZIP")
     parser.add_argument("--bundle-size", "-b", type=int, default=15, help="عدد الكتب في كل حزمة مضغوطة ZIP")
-    parser.add_argument("--server", "-s", default=os.getenv("CONVERTER_SERVER_URL", "https://ais-dev-wpsct27fdufcpry5x6ikjn-685461883733.europe-west2.run.app"), help="رابط سيرفر التحويل (اختياري)")
+    parser.add_argument("--server", "-s", default=os.getenv("CONVERTER_SERVER_URL", "https://pdf-to-word-markdown-text-converter.ai.studio"), help="رابط سيرفر التحويل (اختياري)")
+    parser.add_argument("--team-code", default=os.getenv("TEAM_ACCESS_CODE", ""), help="رمز دخول الفريق في حال تفعيل القفل")
     parser.add_argument("--api-key", "-k", default=os.getenv("GEMINI_API_KEY", ""), help="مفتاح Gemini API للاتصال المباشر 24/7 دون متصفح")
     return parser.parse_args()
+
+FREE_GEMINI_MODELS = [
+    "gemini-4-hydrogen",
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-2.5-flash",
+]
+
+_TEAM_SESSION_TOKEN = ""
+
+def get_team_auth_headers(server_url, team_code):
+    global _TEAM_SESSION_TOKEN
+    if not team_code:
+        return {}
+    if _TEAM_SESSION_TOKEN:
+        return {"X-Team-Session": _TEAM_SESSION_TOKEN}
+    try:
+        req = urllib.request.Request(
+            f"{server_url.rstrip('/')}/api/auth/verify",
+            data=json.dumps({"code": team_code, "rememberDevice": True}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if data.get("success") and data.get("sessionToken"):
+                _TEAM_SESSION_TOKEN = data["sessionToken"]
+                return {"X-Team-Session": _TEAM_SESSION_TOKEN}
+    except Exception:
+        pass
+    return {}
 
 def scan_books(folder):
     books = []
@@ -47,39 +81,45 @@ def scan_books(folder):
     return books
 
 def convert_chunk_direct_gemini(b64_str, api_key):
-    """Direct Google Gemini REST API call - 100% autonomous, zero local web server needed."""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={api_key}"
-    payload = json.dumps({
-        "contents": [
-            {
-                "role": "user",
-                "parts": [
-                    {"text": "Transcribe this document into 100% VERBATIM high-fidelity markdown with RTL Arabic layout, preserved headers, tables, footnotes, and Quranic verses in authentic Uthmani script inside ﴿...﴾. Do NOT summarize or skip any content."},
-                    {
-                        "inlineData": {
-                            "mimeType": "application/pdf",
-                            "data": b64_str.replace("data:application/pdf;base64,", "")
+    """Direct Google Gemini REST API call with active free-tier model rotation."""
+    clean_b64 = b64_str.replace("data:application/pdf;base64,", "")
+    last_err = None
+    for model_id in FREE_GEMINI_MODELS:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={api_key}"
+        gen_cfg = {} if model_id.startswith("gemini-4-") else {"temperature": 0.0}
+        payload = json.dumps({
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {"text": "Transcribe this document into 100% VERBATIM high-fidelity markdown with RTL Arabic layout, preserved headers, tables, footnotes, <u>underlined</u> spans, and Quranic verses in authentic Uthmani script inside ﴿...﴾. Do NOT summarize or skip any content."},
+                        {
+                            "inlineData": {
+                                "mimeType": "application/pdf",
+                                "data": clean_b64
+                            }
                         }
-                    }
-                ]
-            }
-        ],
-        "generationConfig": {
-            "temperature": 0.0
-        }
-    }).encode("utf-8")
+                    ]
+                }
+            ],
+            "generationConfig": gen_cfg
+        }).encode("utf-8")
 
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        res_data = json.loads(resp.read().decode("utf-8"))
-        candidates = res_data.get("candidates", [])
-        if candidates and "content" in candidates[0]:
-            parts = candidates[0]["content"].get("parts", [])
-            if parts and "text" in parts[0]:
-                return parts[0]["text"]
-    raise RuntimeError("Empty response from Gemini API")
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                res_data = json.loads(resp.read().decode("utf-8"))
+                candidates = res_data.get("candidates", [])
+                if candidates and "content" in candidates[0]:
+                    parts = candidates[0]["content"].get("parts", [])
+                    if parts and "text" in parts[0]:
+                        return parts[0]["text"]
+        except Exception as e:
+            last_err = e
+            continue
+    raise RuntimeError(f"Empty or failed response from Gemini free-tier models: {last_err}")
 
-def convert_pdf_file(file_path, server_url, api_key):
+def convert_pdf_file(file_path, server_url, api_key, team_code=""):
     with open(file_path, "rb") as f:
         data = f.read()
     if not data:
@@ -105,10 +145,12 @@ def convert_pdf_file(file_path, server_url, api_key):
                 "options": {"direction": "rtl", "preserveHandwriting": True}
             }).encode("utf-8")
 
+            headers = {"Content-Type": "application/json"}
+            headers.update(get_team_auth_headers(server_url, team_code))
             req = urllib.request.Request(
-                f"{server_url}/api/convert-pdf",
+                f"{server_url.rstrip('/')}/api/convert-pdf",
                 data=payload,
-                headers={"Content-Type": "application/json"}
+                headers=headers
             )
 
             try:
@@ -175,7 +217,7 @@ def main():
     for idx, book in enumerate(remaining, 1):
         print(f"[{len(completed) + 1}/{len(books)}] جاري تحويل: {book['name']} ({book['size_mb']} MB)...")
         try:
-            markdown = convert_pdf_file(book["path"], args.server, args.api_key)
+            markdown = convert_pdf_file(book["path"], args.server, args.api_key, args.team_code)
             base_name = os.path.splitext(book["name"])[0]
 
             md_path = os.path.join(args.output, f"{base_name}.md")

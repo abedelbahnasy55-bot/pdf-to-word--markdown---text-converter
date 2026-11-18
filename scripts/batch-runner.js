@@ -125,8 +125,9 @@ const bundleSize = parseInt(getArg('--bundle-size', '-b', '15'), 10) || 15;
 const serverUrl = getArg(
   '--server',
   '-s',
-  process.env.CONVERTER_SERVER_URL || 'https://ais-dev-wpsct27fdufcpry5x6ikjn-685461883733.europe-west2.run.app'
+  process.env.CONVERTER_SERVER_URL || 'https://pdf-to-word-markdown-text-converter.ai.studio'
 ).replace(/\/+$/, '');
+const teamAccessCode = getArg('--team-code', '', process.env.TEAM_ACCESS_CODE || '');
 const apiKey = getArg('--api-key', '-k', process.env.GEMINI_API_KEY || '');
 const fontProfile = getArg('--font-profile', '-f', 'bilingual_publication');
 const customArabicFont = getArg('--arabic-font', '', '');
@@ -138,12 +139,34 @@ const extractionMode = getArg('--mode', '-m', 'auto'); // auto | server | offlin
 
 const OCR_MODELS_FALLBACK = [
   'gemini-4-hydrogen',
-  'gemini-3.1-flash-lite',
-  'gemini-3.5-flash-lite',
-  'gemini-3.5-flash',
   'gemini-3.8-flash',
-  'gemini-flash-latest',
+  'gemini-3.7-flash',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-2.5-flash',
 ];
+
+let cachedTeamSessionToken = '';
+async function getTeamAuthHeaders() {
+  if (!teamAccessCode) return {};
+  if (cachedTeamSessionToken) {
+    return { 'X-Team-Session': cachedTeamSessionToken };
+  }
+  try {
+    const authRes = await fetch(`${serverUrl}/api/auth/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: teamAccessCode, rememberDevice: true }),
+    });
+    const authJson = await authRes.json().catch(() => null);
+    if (authRes.ok && authJson?.sessionToken) {
+      cachedTeamSessionToken = authJson.sessionToken;
+      return { 'X-Team-Session': cachedTeamSessionToken };
+    }
+  } catch {}
+  return {};
+}
 
 const MASTER_OCR_SYSTEM_PROMPT = `You are a master document transcription, OCR, and typesetting specialist for all languages and fields (Arabic, Islamic/Azhari heritage, English, STEM, and bilingual texts).
 Transcribe every single word, table, footnote, Quranic verse (in authentic Uthmani script strictly inside ﴿...﴾ with full harakat), and diacritic VERBATIM with ZERO omissions.
@@ -339,9 +362,10 @@ async function convertChunkResilient(base64Data, rawBytes, filename, mimeType = 
       const controller = new AbortController();
       const timeoutHandle = setTimeout(() => controller.abort(), 150000);
       try {
+        const teamHeaders = await getTeamAuthHeaders();
         const res = await fetch(`${serverUrl}/api/convert-pdf`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...teamHeaders },
           signal: controller.signal,
           body: JSON.stringify({
             pdfBase64: base64Data,

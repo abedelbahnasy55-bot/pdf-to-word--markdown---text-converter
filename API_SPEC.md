@@ -1,35 +1,50 @@
 # وثيقة مواصفات وعقد واجهة برمجة التطبيقات (API Specification & Contracts)
 
-تحدد هذه الوثيقة العقد البرمجي الكامل لخادم التحويل السحابي والمحلي، وسياسات الحصص وحدود الأحجام ومعالجة الأخطاء لعملاء التيرمينال (CLI) وخوادم بروتوكول سياق النماذج (MCP).
+تحدد هذه الوثيقة العقد البرمجي الكامل لخادم **استوديو الوثائق والنشر (Arabic & Bilingual Document Studio)**، وتشمل مسارات التحويل، المهام الخلفية المستمرة على الخادم، مصفوفة نماذج جيمناي المجانية النشطة، أقفال الفريق، وحزم CLI / MCP.
 
 ---
 
 ## 1. نظرة عامة على المسارات (Endpoints Overview)
 
-| المسار | الطريقة | الوصف |
-| :--- | :--- | :--- |
-| `/api/health` | `GET` | فحص صحة الخادم وجاهزية الموديلات ودعم MCP و CLI |
-| `/api/info` | `GET` | التوثيق البرمجي الكامل والعقد ومصفوفة الموديلات وحدود الأحجام |
-| `/api/convert-pdf` | `POST` | تحويل ملف PDF أو صورة إلى Markdown عالي الدقة وتنسيق Word |
-| `/api/cli/download/:name` | `GET` | تنزيل حزمة التثبيت الكاملة `bundle.zip` أو السكربتات المستقلة |
+| المسار | الطريقة | المصادقة | الوصف |
+| :--- | :--- | :--- | :--- |
+| `/api/ping` | `GET` | عام | نبضة سريعة لإبقاء الاتصال حياً ومزامنة الاستيقاظ من الخمول |
+| `/api/health` | `GET` | عام | فحص صحة الخادم وجاهزية `GEMINI_API_KEY` وحالة الموديلات |
+| `/api/info` | `GET` | محمي بالقفل | التوثيق البرمجي الحي، الميزات، ونطاق الخادم العام |
+| `/api/auth/status` | `GET` | عام | حالة قفل الفريق، مصدر القفل، ورابط المشاركة العام |
+| `/api/auth/verify` | `POST` | عام | التحقق من رمز الفريق وإصدار كوكي الجلسة + توكن `X-Team-Session` |
+| `/api/auth/configure` | `POST` | جلسة موثقة | تفعيل أو تحديث رمز دخول الفريق من لوحة المشرف |
+| `/api/auth/revoke-sessions` | `POST` | جلسة موثقة | إنهاء كافة جلسات الفريق الحالية وإعادة ضبط التوثيق |
+| `/api/models/status` | `GET` | محمي بالقفل | عرض مصفوفة النماذج المجانية وحالة الحصص والتبريد |
+| `/api/models/refresh` | `POST` | محمي بالقفل | فحص حي فوري لقائمة نماذج `@google/genai` وتدويرها |
+| `/api/extract-direct-pdf` | `POST` | محمي بالقفل | استخراج رقمي فوري للنصوص والخطوط السفلية `<u>...</u>` دون استهلاك حصة |
+| `/api/convert-pdf` | `POST` | محمي بالقفل | تفريغ وتنسيق PDF أو صورة عبر جيمناي مع تدوير النماذج المجانية |
+| `/api/export-docx` | `POST` | محمي بالقفل | توليد مستند Word (`.docx`) عبر محرك التخطيط ثنائي اللغة (RTL/LTR) |
+| `/api/jobs` | `GET` / `POST` | محمي بالقفل | سرد المهام الخلفية أو رفع ملف PDF/صورة للمعالجة المستمرة في `.jobs/` |
+| `/api/jobs/:id` | `GET` / `DELETE` | محمي بالقفل | استرجاع حالة/نتيجة مهمة خلفية أو حذفها |
+| `/api/jobs/:id/download-docx` | `GET` | محمي بالقفل | تنزيل ناتج المهمة الخلفية مباشرة بصيغة Word (`.docx`) |
+| `/api/jobs/:id/cancel` | `POST` | محمي بالقفل | إيقاف المهمة الخلفية مؤقتاً مع حفظ الصفحات المنجزة |
+| `/api/jobs/:id/resume` | `POST` | محمي بالقفل | استئناف المهمة الخلفية من آخر صفحة منجزة |
+| `/api/compiler/*` | `POST` | محمي بالقفل | استوديو تجميع الكتب والفهرسة والبحث الدلالي والتصحيح البلاغي |
+| `/api/cli/download/:name` | `GET` | محمي بالقفل | تنزيل حزمة التثبيت `bundle.zip` أو سكربتات CLI و MCP المستقلة |
+| `/api/links-guide/download` | `GET` | محمي بالقفل | تنزيل دليل الروابط الشامل `LINKS_GUIDE.md` |
 
 ---
 
 ## 2. عقد تحويل المستندات (`POST /api/convert-pdf`)
 
 ### معايير الطلب (Request Parameters):
-- **الرابط:** `https://ais-dev-wpsct27fdufcpry5x6ikjn-685461883733.europe-west2.run.app/api/convert-pdf`
-- **الترويسة:** `Content-Type: application/json`
+- **النطاق المرجعي:** `https://pdf-to-word-markdown-text-converter.ai.studio/api/convert-pdf`
+- **الترويسة:** `Content-Type: application/json` (مع كوكي الجلسة أو `X-Team-Session` عند تفعيل قفل الفريق)
 - **الحد الأقصى لحجم جسم الطلب (HTTP Body):** `250MB`
 - **الحد الأقصى لحجم Base64 للقطعة الواحدة:** `24MB`
-- **الحجم الموصى به لكل قطعة:** 2 إلى 4 صفحات للكتب المصورة الممسوحة ضوئياً (لضمان أعلى دقة حرفية وتجنب تجاوز الحصص اللحظية).
-- **المهلة الزمنية للعميل (Client Timeout):** `180 ثانية` (مع آلية AbortController).
-- **فحص الترويسات السحرية (Magic Bytes Validation):** `%PDF` لملفات PDF، و`\x89PNG` لصور PNG، و`\xFF\xD8` لصور JPEG. يتم رفض أي بيانات عشوائية فورياً بحالة `400 Bad Request`.
+- **الحجم الموصى به لكل قطعة:** 2 إلى 4 صفحات للكتب المصورة الممسوحة ضوئياً (لضمان الدقة الحرفية ومنع انقطاع الحصص).
+- **فحص الترويسات السحرية (Magic Bytes Validation):** `%PDF` لملفات PDF، و`\x89PNG` لصور PNG، و`\xFF\xD8` لصور JPEG، و`RIFF....WEBP` لصور WebP.
 
 ### جسم الطلب (Request Body JSON):
 ```json
 {
-  "pdfBase64": "JVBERi0xLjQK...", 
+  "pdfBase64": "JVBERi0xLjQK...",
   "filename": "balagha_exam.pdf",
   "options": {
     "direction": "rtl",
@@ -47,8 +62,8 @@
     "detectedLanguage": "Arabic",
     "textDirection": "rtl",
     "pageCountEstimate": 3,
-    "markdown": "# بوكليت مادة البلاغة\n\nس١: ما تعريف البلاغة؟\n...",
-    "plainText": "بوكليت مادة البلاغة\n\nس١: ما تعريف البلاغة؟...",
+    "markdown": "# بوكليت مادة البلاغة\n\nس١: أعرب ما تحته خط: <u>العلم</u> نور.\n...",
+    "plainText": "بوكليت مادة البلاغة\n\nس١: أعرب ما تحته خط: العلم نور...",
     "hasArabicText": true,
     "hasTables": true,
     "hasMathOrScience": false
@@ -57,7 +72,7 @@
 ```
 
 ### سياسة معالجة الأخطاء وحدود الطلبات (`HTTP 429 Too Many Requests`):
-عند بلوغ حد الطلبات بالدقيقة، يعيد الخادم رداً بصيغة `application/json` متضمناً عدد الثواني المطلوب انتظارها:
+عند بلوغ حد الطلبات بالدقيقة أو نفاد حصة نموذج مؤقتاً، يدور الخادم تلقائياً عبر تجمع النماذج المجانية النشطة؛ وإذا استنفدت جميعها يعيد استجابة JSON تتضمن مدة الانتظار الموصى بها:
 ```json
 {
   "success": false,
@@ -71,18 +86,19 @@
 
 ---
 
-## 3. مصفوفة النماذج الاحتياطية وترتيب السقوط (Model Fallback Cascade)
+## 3. التدوير الديناميكي للنماذج المجانية (`sharedModelPool`)
 
-يعتمد الخادم على تسلسل هرمي ذكي يمنح الأولوية للنماذج فائقة السرعة وذات السعة العالية، وينتقل تلقائياً للنموذج التالي عند حدوث أي ضغط:
+بدلاً من الاعتماد على نموذج ثابت أو نماذج مدفوعة/متخصصة، يستخدم الخادم `server/modelPool.ts` لفحص نماذج `@google/genai` الحية عبر `ai.models.list()` وتدوير النماذج المجانية المتاحة تلقائياً:
 
-1. `gemini-3.5-flash-lite` (المحرك الافتراضي الأساسي - سرعة فائقة وحصص عالية)
-2. `gemini-3.1-flash-lite` (الاحتياطي الأول)
-3. `gemini-3.5-flash` (الاحتياطي الثاني)
-4. `gemini-3.8-flash` (الاحتياطي للوثائق المركبة والنصوص النادرة)
-5. `gemini-3.7-flash`
-6. `gemini-3.6-flash`
-7. `gemini-flash-latest`
-8. `gemini-pro-latest`
+1. `gemini-4-hydrogen` (`ThinkingLevel.LOW`)
+2. `gemini-3.8-flash` (`ThinkingLevel.LOW`)
+3. `gemini-3.7-flash` (`ThinkingLevel.LOW`)
+4. `gemini-3.6-flash` (`ThinkingLevel.MINIMAL`)
+5. `gemini-3.5-flash` (`ThinkingLevel.MINIMAL`)
+6. `gemini-3.1-flash-lite` (`ThinkingLevel.MINIMAL`)
+7. `gemini-2.5-flash` (بدون `thinkingConfig` للنماذج السابقة للجيل الثالث)
+
+تتم تصفية النماذج المدفوعة أو غير النصية تلقائياً (`carbon`, `argon`, `image`, `lyria`, `omni`, `embedding`, `decision`, `-tts`, `-live`, `pro` المستقلة)، وتُطبيق دالة `buildSafeThinkingConfig(modelId)` على كل استدعاء.
 
 ---
 
@@ -90,11 +106,12 @@
 
 | المعامل `:scriptName` | نوع المحتوى المُعاد | الوصف |
 | :--- | :--- | :--- |
-| `bundle` أو `bundle.zip` | `application/zip` | حزمة ZIP مضغوطة متكاملة تحوي السكربتات و `package.json` و `install.sh` و `README.md` |
-| `mcp-server` | `application/javascript` | خادم بروتوكول سياق النماذج `mcp-server.js` |
-| `batch-runner-js` | `application/javascript` | مُشغل التيرمينال للدفعات الضخمة `batch-runner.js` |
+| `bundle` أو `bundle.zip` | `application/zip` | حزمة متكاملة تحوي سكربتات Node.js و Python و MCP و `package.json` و `README.md` |
+| `mcp-server` | `application/javascript` | خادم بروتوكول سياق النماذج `mcp-server.js` مع دعم `TEAM_ACCESS_CODE` |
+| `batch-runner-js` | `application/javascript` | مُشغل التيرمينال للدفعات `batch-runner.js` مع دعم `--team-code` |
+| `batch-runner-py` | `text/x-python` | مشغل بايثون `batch_runner.py` مع التدوير عبر مسار الخادم أو SDK المباشر |
 | `package.json` | `application/json` | ملف إعدادات الحزم مع `"type": "module"` |
 | `install.sh` | `application/x-sh` | سكربت التثبيت التلقائي لنظام Linux / macOS |
 | `install.bat` | `application/x-bat` | سكربت التثبيت التلقائي لنظام Windows |
 
-يتم استبدال النطاق في كافة السكربتات المحملة تلقائياً بنطاق السيرفر الحالي المعتمد `ais-dev-`.
+يتم ضبط النطاق المرجعي في كافة السكربتات المحملة تلقائياً إلى النطاق العام المعتمد `https://pdf-to-word-markdown-text-converter.ai.studio`.

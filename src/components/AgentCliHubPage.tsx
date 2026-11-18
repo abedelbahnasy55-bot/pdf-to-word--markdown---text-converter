@@ -20,15 +20,37 @@ import {
 
 interface AgentCliHubPageProps {
   onBack: () => void;
+  embedded?: boolean;
 }
 
-export const AgentCliHubPage: React.FC<AgentCliHubPageProps> = ({ onBack }) => {
+export const AgentCliHubPage: React.FC<AgentCliHubPageProps> = ({ onBack, embedded = false }) => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isPinging, setIsPinging] = useState(false);
   const [pingResult, setPingResult] = useState<{ ok: boolean; message: string } | null>(null);
 
+  const rawOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
   const serverUrl =
-    typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+    rawOrigin.includes('.ai.studio') || rawOrigin.includes('wpsct27fdufcpry5x6ikjn')
+      ? 'https://pdf-to-word-markdown-text-converter.ai.studio'
+      : rawOrigin;
+
+  const handleDownloadScript = async (endpoint: string, filename: string) => {
+    try {
+      const res = await apiFetch(endpoint);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setPingResult({ ok: false, message: `تعذر تنزيل الملف (${filename}).` });
+    }
+  };
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -92,42 +114,48 @@ ${mcpConfigJson}`;
 
   return (
     <div
-      className="max-w-5xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-10 space-y-6 font-sans"
+      className={
+        embedded
+          ? 'w-full space-y-6 font-sans'
+          : 'max-w-5xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-10 space-y-6 font-sans'
+      }
       dir="rtl"
     >
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-200 dark:border-[#232938]">
-        <div className="flex items-center gap-3">
+      {!embedded && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-200 dark:border-[#232938]">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onBack}
+              className="p-2.5 rounded-xl bg-white dark:bg-[#141720] border border-slate-200 dark:border-[#2A3142] hover:bg-slate-50 dark:hover:bg-[#1B202C] text-slate-700 dark:text-slate-200 cursor-pointer flex items-center justify-center shrink-0"
+              title="العودة لصفحة التحويل الرئيسية"
+            >
+              <ArrowRight className="w-5 h-5" />
+            </button>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-lg sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
+                  مركز الأتمتة وسطـر الأوامر (CLI & MCP Hub)
+                </h1>
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30">
+                  مجاني 100%
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">
+                تشغيل وتحويل المكتبات الكبيرة محلياً أو عبر سطر الأوامر مع استهلاك ذاكرة منخفض واستئناف تلقائي
+              </p>
+            </div>
+          </div>
+
           <button
             type="button"
             onClick={onBack}
-            className="p-2.5 rounded-xl bg-white dark:bg-[#141720] border border-slate-200 dark:border-[#2A3142] hover:bg-slate-50 dark:hover:bg-[#1B202C] text-slate-700 dark:text-slate-200 cursor-pointer flex items-center justify-center shrink-0"
-            title="العودة لصفحة التحويل الرئيسية"
+            className="self-start sm:self-auto px-4 py-2 text-xs sm:text-sm font-bold bg-slate-100 dark:bg-[#1B202C] hover:bg-slate-200 dark:hover:bg-[#232938] text-slate-700 dark:text-slate-200 rounded-lg cursor-pointer"
           >
-            <ArrowRight className="w-5 h-5" />
+            العودة للرئيسية
           </button>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-lg sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-                مركز الأتمتة وسطـر الأوامر (CLI & MCP Hub)
-              </h1>
-              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30">
-                مجاني 100%
-              </span>
-            </div>
-            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">
-              تشغيل وتحويل المكتبات الكبيرة محلياً أو عبر سطر الأوامر مع استهلاك ذاكرة منخفض واستئناف تلقائي
-            </p>
-          </div>
         </div>
-
-        <button
-          type="button"
-          onClick={onBack}
-          className="self-start sm:self-auto px-4 py-2 text-xs sm:text-sm font-bold bg-slate-100 dark:bg-[#1B202C] hover:bg-slate-200 dark:hover:bg-[#232938] text-slate-700 dark:text-slate-200 rounded-lg cursor-pointer"
-        >
-          العودة للرئيسية
-        </button>
-      </div>
+      )}
 
       {/* Spec Copy Card */}
       <section className="p-6 bg-slate-900 dark:bg-[#121622] text-white rounded-2xl border border-slate-800 space-y-4">
@@ -185,10 +213,10 @@ ${mcpConfigJson}`;
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-          <a
-            href="/api/cli/download/batch-runner-js"
-            download="batch-runner.js"
-            className="p-3.5 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100/80 dark:hover:bg-emerald-500/20 border border-emerald-200 dark:border-emerald-500/30 rounded-xl flex flex-col justify-between"
+          <button
+            type="button"
+            onClick={() => void handleDownloadScript('/api/cli/download/batch-runner-js', 'batch-runner.js')}
+            className="p-3.5 text-right bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100/80 dark:hover:bg-emerald-500/20 border border-emerald-200 dark:border-emerald-500/30 rounded-xl flex flex-col justify-between cursor-pointer"
           >
             <div className="flex items-center justify-between mb-1.5">
               <span className="font-mono font-bold text-xs text-emerald-800 dark:text-emerald-300">
@@ -197,12 +225,12 @@ ${mcpConfigJson}`;
               <Download className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             </div>
             <span className="text-[11px] text-slate-600 dark:text-slate-400">مشغل Node.js</span>
-          </a>
+          </button>
 
-          <a
-            href="/api/cli/download/run-batch-bat"
-            download="run_batch.bat"
-            className="p-3.5 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100/80 dark:hover:bg-blue-500/20 border border-blue-200 dark:border-blue-500/30 rounded-xl flex flex-col justify-between"
+          <button
+            type="button"
+            onClick={() => void handleDownloadScript('/api/cli/download/run-batch-bat', 'run_batch.bat')}
+            className="p-3.5 text-right bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100/80 dark:hover:bg-blue-500/20 border border-blue-200 dark:border-blue-500/30 rounded-xl flex flex-col justify-between cursor-pointer"
           >
             <div className="flex items-center justify-between mb-1.5">
               <span className="font-mono font-bold text-xs text-blue-800 dark:text-blue-300">
@@ -211,12 +239,12 @@ ${mcpConfigJson}`;
               <Play className="w-4 h-4 text-blue-600 dark:text-blue-400" />
             </div>
             <span className="text-[11px] text-slate-600 dark:text-slate-400">تشغيل لويندوز</span>
-          </a>
+          </button>
 
-          <a
-            href="/api/cli/download/batch-runner-py"
-            download="batch_runner.py"
-            className="p-3.5 bg-slate-50 dark:bg-[#191E2A] hover:bg-slate-100 dark:hover:bg-[#1E2433] border border-slate-200 dark:border-[#252B3B] rounded-xl flex flex-col justify-between"
+          <button
+            type="button"
+            onClick={() => void handleDownloadScript('/api/cli/download/batch-runner-py', 'batch_runner.py')}
+            className="p-3.5 text-right bg-slate-50 dark:bg-[#191E2A] hover:bg-slate-100 dark:hover:bg-[#1E2433] border border-slate-200 dark:border-[#252B3B] rounded-xl flex flex-col justify-between cursor-pointer"
           >
             <div className="flex items-center justify-between mb-1.5">
               <span className="font-mono font-bold text-xs text-slate-800 dark:text-slate-200">
@@ -225,12 +253,12 @@ ${mcpConfigJson}`;
               <Download className="w-4 h-4 text-slate-600 dark:text-slate-400" />
             </div>
             <span className="text-[11px] text-slate-600 dark:text-slate-400">مشغل Python 3</span>
-          </a>
+          </button>
 
-          <a
-            href="/api/cli/download/run-batch-sh"
-            download="run_batch.sh"
-            className="p-3.5 bg-slate-50 dark:bg-[#191E2A] hover:bg-slate-100 dark:hover:bg-[#1E2433] border border-slate-200 dark:border-[#252B3B] rounded-xl flex flex-col justify-between"
+          <button
+            type="button"
+            onClick={() => void handleDownloadScript('/api/cli/download/run-batch-sh', 'run_batch.sh')}
+            className="p-3.5 text-right bg-slate-50 dark:bg-[#191E2A] hover:bg-slate-100 dark:hover:bg-[#1E2433] border border-slate-200 dark:border-[#252B3B] rounded-xl flex flex-col justify-between cursor-pointer"
           >
             <div className="flex items-center justify-between mb-1.5">
               <span className="font-mono font-bold text-xs text-slate-800 dark:text-slate-200">
@@ -239,7 +267,7 @@ ${mcpConfigJson}`;
               <Download className="w-4 h-4 text-slate-600 dark:text-slate-400" />
             </div>
             <span className="text-[11px] text-slate-600 dark:text-slate-400">مشغل ماك ولينكس</span>
-          </a>
+          </button>
         </div>
 
         <div className="space-y-3">
@@ -347,22 +375,22 @@ ${mcpConfigJson}`;
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <a
-              href="/api/cli/download/bundle"
-              download="books-word-converter-cli.zip"
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg"
+            <button
+              type="button"
+              onClick={() => void handleDownloadScript('/api/cli/download/bundle', 'books-word-converter-cli.zip')}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               <span>تنزيل الحزمة (.zip)</span>
-            </a>
-            <a
-              href="/api/cli/download/mcp-server"
-              download="mcp-server.js"
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-lg"
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleDownloadScript('/api/cli/download/mcp-server', 'mcp-server.js')}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-lg cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               <span>mcp-server.js</span>
-            </a>
+            </button>
           </div>
         </div>
 

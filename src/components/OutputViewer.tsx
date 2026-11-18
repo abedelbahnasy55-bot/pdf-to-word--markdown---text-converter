@@ -32,6 +32,7 @@ import { EmbeddedMicroscopicAuditPanel } from './EmbeddedMicroscopicAuditPanel';
 import { runMicroscopicAudit } from '../utils/microscopicAuditEngine';
 import { CustomSelect } from './ui';
 import { ErrorBoundary } from './ErrorBoundary';
+import { GoogleDocsExportModal } from './GoogleDocsExportModal';
 
 interface OutputViewerProps {
   result: ConversionResult;
@@ -91,6 +92,7 @@ export const OutputViewer: React.FC<OutputViewerProps> = ({
   const [customDirection, setCustomDirection] = useState<'rtl' | 'ltr'>(result.textDirection);
   const [fontProfile, setFontProfile] = useState<FontProfileId>('bilingual_publication');
   const [showAuditReports, setShowAuditReports] = useState(false);
+  const [isGoogleDocsOpen, setIsGoogleDocsOpen] = useState(false);
 
   const isRtl = customDirection === 'rtl';
 
@@ -292,6 +294,16 @@ export const OutputViewer: React.FC<OutputViewerProps> = ({
             >
               <Download className="w-4 h-4 text-white" />
               <span>{isGeneratingDocx ? 'جاري تجهيز Word...' : 'تنزيل Word (.docx)'}</span>
+            </button>
+
+            <button
+              id="btn-export-google-docs-hero"
+              type="button"
+              onClick={() => setIsGoogleDocsOpen(true)}
+              className="px-3.5 py-2 bg-slate-900 dark:bg-[#1E2433] hover:bg-slate-800 dark:hover:bg-[#272F42] text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <FileText className="w-3.5 h-3.5 text-blue-400" />
+              <span>Google Docs</span>
             </button>
 
             <button
@@ -555,6 +567,16 @@ export const OutputViewer: React.FC<OutputViewerProps> = ({
           />
         )}
       </div>
+
+      <GoogleDocsExportModal
+        isOpen={isGoogleDocsOpen}
+        onClose={() => setIsGoogleDocsOpen(false)}
+        title={result.title || result.fileName || 'مستند الاستوديو'}
+        markdown={result.markdown}
+        isRtl={isRtl}
+        initialFontProfile={fontProfile}
+        onExportSuccess={() => onDownloadSuccess?.()}
+      />
     </div>
   );
 };
