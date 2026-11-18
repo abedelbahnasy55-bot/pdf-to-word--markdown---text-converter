@@ -9,8 +9,6 @@ import { HistoryDrawer } from './components/HistoryDrawer';
 import { SmartCompilerWorkspace } from './components/SmartCompilerWorkspace';
 import { TeamAccessGate } from './components/TeamAccessGate';
 import { AdminConsolePage, type TeamAuthStatusState } from './components/AdminConsolePage';
-import { GoogleDriveBrowserModal } from './components/GoogleDriveBrowserModal';
-import { GoogleDocsExportModal } from './components/GoogleDocsExportModal';
 import {
   CONVERSION_DEFAULTS,
   ConversionOptions,
@@ -180,15 +178,9 @@ export default function App() {
   const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
   const [activeSavedId, setActiveSavedId] = useState<string | null>(null);
 
-  // Team Access Lock & Google Workspace modal state
+  // Team Access Lock state
   const [authStatus, setAuthStatus] = useState<TeamAuthStatusState | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [isDriveBrowserOpen, setIsDriveBrowserOpen] = useState(false);
-  const [quickGoogleDocsTarget, setQuickGoogleDocsTarget] = useState<{
-    title: string;
-    markdown: string;
-    isRtl: boolean;
-  } | null>(null);
 
   // Server-side persistent background jobs (continue even when tab/browser/device closes)
   const [serverJobs, setServerJobs] = useState<ServerJobMeta[]>([]);
@@ -823,37 +815,6 @@ export default function App() {
       setTimeout(() => setNotificationMessage(null), 4000);
     } catch (err: any) {
       setErrorMessage(err?.message || 'تعذر تنزيل ملف Word من الخادم.');
-    } finally {
-      setLoadingServerJobId(null);
-    }
-  };
-
-  const handleOpenServerJobGoogleDocs = async (job: ServerJobMeta) => {
-    setLoadingServerJobId(job.id);
-    setErrorMessage(null);
-    try {
-      const resp = await apiFetch(`/api/jobs/${encodeURIComponent(job.id)}`);
-      const data = await resp.json();
-      if (!resp.ok || !data?.success) {
-        throw new Error(data?.error || 'تعذر تحميل نص المهمة للتصدير إلى مستندات Google.');
-      }
-      const markdown = String(data.result?.markdown || data.partialMarkdown || '').trim();
-      if (!markdown) {
-        throw new Error('لا يوجد محتوى جاهز للتصدير في هذه المهمة.');
-      }
-      const isRtl =
-        data.result?.textDirection === 'rtl' ||
-        Boolean(data.result?.hasArabicText) ||
-        job.direction === 'rtl' ||
-        (markdown.match(/[\u0600-\u06FF]/g) || []).length > 10;
-
-      setQuickGoogleDocsTarget({
-        title: data.result?.title || job.title || job.fileName.replace(/\.[^/.]+$/, ''),
-        markdown,
-        isRtl,
-      });
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'تعذر تجهيز المستند للتصدير إلى Google Docs.');
     } finally {
       setLoadingServerJobId(null);
     }
@@ -1669,7 +1630,6 @@ export default function App() {
             authStatus={authStatus}
             onAuthStatusUpdated={refreshAuthStatus}
             onExitAdmin={handleExitAdminMode}
-            onOpenDriveBrowser={() => setIsDriveBrowserOpen(true)}
           />
         )}
 
@@ -1904,16 +1864,6 @@ export default function App() {
                               <button
                                 type="button"
                                 disabled={isBusy}
-                                onClick={() => handleOpenServerJobGoogleDocs(job)}
-                                className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                                title="تصدير إلى مستندات Google Docs"
-                              >
-                                <FileText className="w-3.5 h-3.5" />
-                                <span>Google Docs</span>
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isBusy}
                                 onClick={() => handleOpenServerJobResult(job)}
                                 className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-[#2A3142] bg-white dark:bg-[#1B202C] hover:bg-slate-50 dark:hover:bg-[#232938] text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50"
                               >
@@ -2038,7 +1988,6 @@ export default function App() {
                     <Dropzone
                       onStartConversion={handleStartConversion}
                       isProcessing={isProcessing}
-                      onOpenGoogleDrive={() => setIsDriveBrowserOpen(true)}
                     />
                   )}
 
@@ -2664,21 +2613,6 @@ export default function App() {
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() =>
-                                        setQuickGoogleDocsTarget({
-                                          title: item.result!.title || item.name.replace(/\.[^/.]+$/, ''),
-                                          markdown: item.result!.markdown || item.result!.plainText || '',
-                                          isRtl: item.result!.textDirection === 'rtl' || Boolean(item.result!.hasArabicText),
-                                        })
-                                      }
-                                      className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer"
-                                      title="تصدير إلى مستندات Google Docs"
-                                    >
-                                      <FileText className="w-3.5 h-3.5" />
-                                      <span>Google Docs</span>
-                                    </button>
-                                    <button
-                                      type="button"
                                       onClick={() => handleViewBatchItemResult(item.result!)}
                                       className="px-2.5 py-1.5 bg-white dark:bg-[#1B202C] hover:bg-slate-100 dark:hover:bg-[#232938] text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-lg border border-slate-200 dark:border-[#2A3142] transition-colors flex items-center gap-1 cursor-pointer"
                                       title="معاينة محتوى المستند"
@@ -2719,7 +2653,6 @@ export default function App() {
                       <Dropzone
                         onStartConversion={handleStartConversion}
                         isProcessing={isProcessing}
-                        onOpenGoogleDrive={() => setIsDriveBrowserOpen(true)}
                       />
                     )
                   )}
@@ -2757,35 +2690,6 @@ export default function App() {
         onChange={handleRetryFileSelected}
         accept=".pdf,.docx,.doc,image/*"
         className="hidden"
-      />
-
-      {/* Google Drive / Docs Importer Modal */}
-      <GoogleDriveBrowserModal
-        isOpen={isDriveBrowserOpen}
-        onClose={() => setIsDriveBrowserOpen(false)}
-        onImportFiles={(files) => {
-          if (files.length > 0) {
-            if (isAdminMode) {
-              handleExitAdminMode();
-            } else {
-              setActiveView('home');
-            }
-            handleStartConversion(files);
-          }
-        }}
-      />
-
-      {/* Quick Google Docs Exporter Modal for Background Jobs & Batch Queue Items */}
-      <GoogleDocsExportModal
-        isOpen={Boolean(quickGoogleDocsTarget)}
-        onClose={() => setQuickGoogleDocsTarget(null)}
-        title={quickGoogleDocsTarget?.title || 'مستند الاستوديو'}
-        markdown={quickGoogleDocsTarget?.markdown || ''}
-        isRtl={quickGoogleDocsTarget?.isRtl ?? true}
-        onExportSuccess={(res) => {
-          setNotificationMessage(`تم تصدير "${res.name}" إلى مستندات Google Docs بنجاح.`);
-          setTimeout(() => setNotificationMessage(null), 5000);
-        }}
       />
     </div>
   );

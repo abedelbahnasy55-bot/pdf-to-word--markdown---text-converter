@@ -67,12 +67,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <div className="flex flex-col">
             <span className="font-bold text-slate-900 dark:text-slate-100 text-xs sm:text-sm tracking-tight group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-              {isAdminMode ? 'استوديو الوثائق · لوحة المشرف' : 'استوديو الوثائق والنشر'}
+              {isAdminMode ? 'PDF Converter · لوحة المشرف' : 'PDF Converter'}
             </span>
             <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium hidden md:inline -mt-0.5">
               {isAdminMode
                 ? 'إدارة الروابط، قفل الفريق، مراقبة النماذج، وأدوات الأتمتة'
-                : 'تفريغ وتنسيق PDF والصور إلى Word و Google Docs و Markdown وتجميع الكتب'}
+                : 'تفريغ وتنسيق PDF والصور بدقة احترافية إلى Word و Markdown وتجميع الكتب'}
             </span>
           </div>
         </button>

@@ -59,7 +59,7 @@ export const TeamAccessGate: React.FC<TeamAccessGateProps> = ({
     >
       <div className="max-w-md w-full mx-auto flex items-center justify-between">
         <span className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-100">
-          استوديو الوثائق والنشر
+          PDF Converter
         </span>
         <button
           type="button"

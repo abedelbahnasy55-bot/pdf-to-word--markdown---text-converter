@@ -7,8 +7,6 @@ import {
   Copy,
   Download,
   ExternalLink,
-  FileText,
-  FolderOpen,
   Globe,
   Lock,
   LogOut,
@@ -19,8 +17,6 @@ import {
   Unlock,
 } from 'lucide-react';
 import { apiFetch, setStoredTeamToken } from '../utils/apiClient';
-import { useWorkspaceAuth } from '../utils/workspaceAuth';
-import { GoogleSignInButton } from './GoogleSignInButton';
 import { AgentCliHubPage } from './AgentCliHubPage';
 import {
   PROJECT_CUSTOM_INSTRUCTIONS_EN,
@@ -57,7 +53,6 @@ interface AdminConsolePageProps {
   authStatus: TeamAuthStatusState | null;
   onAuthStatusUpdated: () => Promise<void> | void;
   onExitAdmin: () => void;
-  onOpenDriveBrowser: () => void;
 }
 
 function generateSuggestedTeamCode(): string {
@@ -107,9 +102,8 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
   authStatus,
   onAuthStatusUpdated,
   onExitAdmin,
-  onOpenDriveBrowser,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'instructions' | 'cli' | 'workspace'>(
+  const [activeTab, setActiveTab] = useState<'overview' | 'instructions' | 'cli'>(
     'overview'
   );
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -132,9 +126,6 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
   // Links Guide download state
   const [isDownloadingGuide, setIsDownloadingGuide] = useState(false);
   const [guideDownloadNotice, setGuideDownloadNotice] = useState<string | null>(null);
-
-  // Google Workspace auth
-  const { user, needsAuth, signIn, signOut, isSigningIn, authError } = useWorkspaceAuth();
 
   const loadModelsStatus = async (forceRefresh = false) => {
     setIsLoadingModels(true);
@@ -360,19 +351,6 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
         >
           <Terminal className="w-4 h-4" />
           <span>أدوات الأتمتة و CLI / MCP</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('workspace')}
-          className={`px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
-            activeTab === 'workspace'
-              ? 'border-blue-600 text-blue-700 dark:text-blue-400'
-              : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          <span>تكامل Google Docs & Drive</span>
         </button>
       </nav>
 
@@ -768,85 +746,6 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
       {/* Tab 3: Automation CLI & MCP Hub */}
       {activeTab === 'cli' && (
         <AgentCliHubPage embedded onBack={() => setActiveTab('overview')} />
-      )}
-
-      {/* Tab 4: Google Workspace Status */}
-      {activeTab === 'workspace' && (
-        <div className="space-y-4">
-          <div className="p-5 rounded-2xl border border-slate-200 dark:border-[#232938] bg-white dark:bg-[#141720] space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                  حساب Google المتصل لخدمات Docs و Drive
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  يتيح للمستخدمين استيراد ملفات PDF والمستندات من Google Drive وتصدير النتائج المنسقة مباشرة إلى Google Docs بتنسيق عربي RTL كامل.
-                </p>
-              </div>
-
-              {needsAuth ? (
-                <GoogleSignInButton
-                  onClick={() => void signIn().catch(() => {})}
-                  disabled={isSigningIn}
-                />
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => void signOut()}
-                  className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-[#2A3142] bg-white dark:bg-[#1B202C] hover:bg-slate-100 dark:hover:bg-[#232938] text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1.5 cursor-pointer shrink-0"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>تسجيل الخروج من Google</span>
-                </button>
-              )}
-            </div>
-
-            {!needsAuth && user && (
-              <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-300 font-semibold pt-1">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>
-                  متصل حالياً بالحساب:{' '}
-                  <span dir="ltr" className="font-mono">
-                    {user.email || user.displayName}
-                  </span>
-                </span>
-              </div>
-            )}
-
-            {authError && (
-              <p className="text-xs font-semibold text-red-600 dark:text-red-400">{authError}</p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-4 rounded-xl border border-slate-200 dark:border-[#232938] bg-white dark:bg-[#141720] space-y-2">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-slate-100">
-                <FolderOpen className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                <span>استيراد ملفات من Google Drive</span>
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                افتح متصفح Google Drive لسحب أي ملف PDF أو Word أو مستند Google Docs مباشرة إلى قائمة التحويل.
-              </p>
-              <button
-                type="button"
-                onClick={onOpenDriveBrowser}
-                className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer transition-colors"
-              >
-                فتح ملفات Google Drive
-              </button>
-            </div>
-
-            <div className="p-4 rounded-xl border border-slate-200 dark:border-[#232938] bg-white dark:bg-[#141720] space-y-2">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-slate-100">
-                <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <span>التصدير التنسيقي المزدوج</span>
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                كل نتيجة مكتملة (في العارض أو الدفعة أو المهام الخلفية أو استوديو التجميع) تدعم التصدير مباشرة إلى <strong>Word (.docx)</strong> و <strong>Google Docs</strong> بضغطة واحدة.
-              </p>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

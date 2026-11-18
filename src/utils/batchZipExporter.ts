@@ -57,7 +57,7 @@ export async function generateBatchZipBlob(
         title: doc.result?.title || baseName,
         markdown: doc.result?.markdown || '',
         isRtl,
-        author: 'PDF to Word Batch Converter',
+        author: 'PDF Converter',
       });
 
       // Place the Word document directly in the root of the ZIP

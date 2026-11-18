@@ -10,7 +10,6 @@ import {
   Play,
   AlertCircle,
   Server,
-  FolderOpen,
 } from 'lucide-react';
 import { formatBytes } from '../utils/historyStorage';
 import { ConversionOptions } from '../types';
@@ -18,13 +17,11 @@ import { ConversionOptions } from '../types';
 interface DropzoneProps {
   onStartConversion: (files: File[], customOptions?: ConversionOptions) => void;
   isProcessing: boolean;
-  onOpenGoogleDrive?: () => void;
 }
 
 export const Dropzone: React.FC<DropzoneProps> = ({
   onStartConversion,
   isProcessing,
-  onOpenGoogleDrive,
 }) => {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -200,20 +197,6 @@ export const Dropzone: React.FC<DropzoneProps> = ({
                   <Plus className="w-4 h-4" />
                   <span>اختيار ملفات من جهازك</span>
                 </button>
-
-                {onOpenGoogleDrive && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenGoogleDrive();
-                    }}
-                    className="px-4 py-2.5 bg-white dark:bg-[#1B202C] hover:bg-slate-50 dark:hover:bg-[#232938] text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-[#2A3142] text-xs sm:text-sm font-semibold rounded-lg transition-colors cursor-pointer inline-flex items-center gap-2"
-                  >
-                    <FolderOpen className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                    <span>استيراد من Google Drive / Docs</span>
-                  </button>
-                )}
               </div>
 
               <div className="pt-2 flex items-center justify-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">

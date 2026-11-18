@@ -172,7 +172,7 @@ app.get("/api/info", (req, res) => {
   const origin = getPublicOrigin(req);
 
   res.json({
-    name: "Arabic & Bilingual Document Studio API",
+    name: "PDF Converter API",
     version: "2.1.0",
     serverOrigin: origin,
     endpoints: {
