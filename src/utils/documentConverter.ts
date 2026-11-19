@@ -13,14 +13,14 @@ import { parseDocxFile } from './docxReader';
 import { updateStageList } from './pipelineStages';
 import { isRightToLeftText, toStandardArabic } from '../../shared/arabicText';
 import { polishBilingualBoundariesCore } from '../../shared/arabicPipelineCore';
-import { apiFetch } from './apiClient';
+import { convertPdfChunkRequest, extractDirectPdfRequest } from '../api/conversionApi';
 import { markAsDirectlyExtracted, stripExtractionMarker } from './extractionOrigin';
-import { TextProcessor } from './textProcessor';
-import { inspectDocumentPreFlight } from './pdfInspectorCore';
+import { TextProcessor } from '../../shared/textProcessor';
+import { inspectDocumentPreFlight, type PreFlightReport } from './pdfInspectorCore';
 import { StrictQAGatesEngine } from './strictQAGatesEngine';
 import { StructuralCleaner } from './structuralCleaner';
 import { runMicroscopicAudit, generateAutoHealedMarkdown } from './microscopicAuditEngine';
-import { TextCleanerEngine } from './textCleanerEngine';
+import { TextCleanerEngine } from '../../shared/textCleanerEngine';
 
 /**
  * Detects and preserves underline formatting markers from original PDFs/OCR/HTML
@@ -205,6 +205,145 @@ function fileToBase64(file: File | Blob): Promise<string> {
   });
 }
 
+function assertNotAborted(abortSignal?: AbortSignal): void {
+  if (abortSignal?.aborted) {
+    throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
+  }
+}
+
+async function runAbortableCountdown(
+  totalSeconds: number,
+  abortSignal: AbortSignal | undefined,
+  onSecond: (remainingSec: number) => void
+): Promise<void> {
+  for (let sec = totalSeconds; sec > 0; sec--) {
+    assertNotAborted(abortSignal);
+    onSecond(sec);
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
+interface DynamicChunkTask {
+  startPage: number;
+  endPage: number;
+}
+
+function splitAndInsertChunkTask(
+  tasks: DynamicChunkTask[],
+  taskIdx: number,
+  currentTask: DynamicChunkTask
+): { leftTask: DynamicChunkTask; rightTask: DynamicChunkTask } {
+  const mid = Math.floor((currentTask.startPage + currentTask.endPage) / 2);
+  const leftTask: DynamicChunkTask = { startPage: currentTask.startPage, endPage: mid };
+  const rightTask: DynamicChunkTask = { startPage: mid + 1, endPage: currentTask.endPage };
+  tasks.splice(taskIdx, 1, leftTask, rightTask);
+  return { leftTask, rightTask };
+}
+
+function assembleFinalConversionResult(params: {
+  title: string;
+  detectedLanguage: string;
+  textDirection: 'rtl' | 'ltr';
+  hasArabicText: boolean;
+  hasMathOrScience: boolean;
+  hasTables: boolean;
+  hasHandwriting: boolean;
+  file: File;
+  totalPages: number;
+  pageCountEstimate?: number;
+  totalChunksProcessed: number;
+  startTime: number;
+  isDocEnglish: boolean;
+  contextualResult: { isAiVerified: boolean; fixedCount: number };
+  grammarAnalysis: Awaited<ReturnType<typeof runGrammarSyntaxAnalyzer>>;
+  structuralAnalysis: Awaited<ReturnType<typeof documentStructuralAuditor>>;
+  quranicVerification: Awaited<ReturnType<typeof quranicVerificationAgent>>;
+  layoutAnalysis: Awaited<ReturnType<typeof auditAndRestructureLayout>>;
+  structuralIntegrityResult: StructuralIntegrityAuditResult;
+  finalized: ReturnType<typeof runMicroscopicFinalizationPipeline>;
+  preFlightReport?: PreFlightReport;
+}): ConversionResult {
+  const {
+    title,
+    detectedLanguage,
+    textDirection,
+    hasArabicText,
+    hasMathOrScience,
+    hasTables,
+    hasHandwriting,
+    file,
+    totalPages,
+    pageCountEstimate,
+    totalChunksProcessed,
+    startTime,
+    isDocEnglish,
+    contextualResult,
+    grammarAnalysis,
+    structuralAnalysis,
+    quranicVerification,
+    layoutAnalysis,
+    structuralIntegrityResult,
+    finalized,
+    preFlightReport,
+  } = params;
+
+  return {
+    title,
+    detectedLanguage,
+    textDirection,
+    hasArabicText,
+    hasMathOrScience,
+    hasTables,
+    hasHandwriting,
+    markdown: finalized.finalMarkdown,
+    plainText: finalized.plainText,
+    sourceExtractText: finalized.sourceExtractText,
+    fileName: file.name,
+    fileSize: file.size,
+    totalPages,
+    ...(pageCountEstimate !== undefined ? { pageCountEstimate } : {}),
+    totalChunksProcessed,
+    conversionDurationMs: Date.now() - startTime,
+    isAutoAudited: true,
+    autoFixedCount:
+      contextualResult.fixedCount +
+      grammarAnalysis.report.truncatedItems.length +
+      structuralAnalysis.report.repairedCount +
+      quranicVerification.report.correctedVersesCount +
+      layoutAnalysis.report.tablesStabilizedCount +
+      layoutAnalysis.report.listsNormalizedCount +
+      structuralIntegrityResult.report.repairedDuplicationsCount +
+      finalized.textCleanerReport.totalReplacements +
+      finalized.strictQAResult.repairedCount,
+    fixedItemsSummary: [
+      isDocEnglish
+        ? 'تم الفحص السياقي الأكاديمي لمطابقة المصادر'
+        : contextualResult.isAiVerified
+        ? 'تم الفحص السياقي ومطابقة المصادر المعتمدة'
+        : 'تم التدقيق عبر محرك القواعد الشرعية',
+      grammarAnalysis.report.overallGrammarVerdict,
+      structuralAnalysis.report.overallStructuralVerdict,
+      isDocEnglish
+        ? 'تم التدقيق التيبوغرافي للوثيقة بنجاح'
+        : quranicVerification.report.overallVerificationVerdict,
+      isDocEnglish
+        ? 'تمت معايرة وهيكلة الصفحات والجداول وتثبيت اتجاه LTR'
+        : layoutAnalysis.report.overallVerdict,
+      structuralIntegrityResult.report.overallVerdict,
+      `التدقيق المجهري الآلي: ${finalized.microscopicAuditReport.summary.overallVerdict} (تطابق ${finalized.microscopicAuditReport.summary.wordFidelityRatio}%)`,
+    ],
+    grammarSyntaxReport: grammarAnalysis.report,
+    structuralAuditReport: structuralAnalysis.report,
+    quranicVerificationReport: quranicVerification.report,
+    layoutIntegrityReport: layoutAnalysis.report,
+    structuralIntegrityReport: structuralIntegrityResult.report,
+    microscopicAuditReport: finalized.microscopicAuditReport,
+    textCleanerReport: finalized.textCleanerReport,
+    strictQAReport: finalized.strictQAResult,
+    ...(preFlightReport ? { preFlightReport } : {}),
+  };
+}
+
 /**
  * Converts a PDF or Image file to Word (.docx), Markdown, and Plain Text
  * with sequential chunking, automatic retry on rate limit, and real-time progress callbacks.
@@ -321,7 +460,7 @@ export async function convertDocumentFile(
     const finalMarkdown = finalizedDocx.finalMarkdown;
     const isArabic = isRightToLeftText(finalMarkdown);
 
-    return {
+    return assembleFinalConversionResult({
       title: parsed.title || file.name.replace(/\.docx$/i, ''),
       detectedLanguage: isArabic ? 'العربية' : 'English',
       textDirection: isArabic ? 'rtl' : 'ltr',
@@ -329,51 +468,19 @@ export async function convertDocumentFile(
       hasMathOrScience: false,
       hasTables: parsed.tables.length > 0 || finalMarkdown.includes('|'),
       hasHandwriting: false,
-      markdown: finalMarkdown,
-      plainText: finalizedDocx.plainText,
-      sourceExtractText: finalizedDocx.sourceExtractText,
-      fileName: file.name,
-      fileSize: file.size,
+      file,
       totalPages: parsed.pageCount || 1,
       totalChunksProcessed: 1,
-      conversionDurationMs: Date.now() - startTime,
-      isAutoAudited: true,
-      autoFixedCount:
-        contextualResult.fixedCount +
-        grammarAnalysis.report.truncatedItems.length +
-        structuralAnalysis.report.repairedCount +
-        quranicVerification.report.correctedVersesCount +
-        layoutAnalysis.report.tablesStabilizedCount +
-        layoutAnalysis.report.listsNormalizedCount +
-        structIntegrity.report.repairedDuplicationsCount +
-        finalizedDocx.textCleanerReport.totalReplacements +
-        finalizedDocx.strictQAResult.repairedCount,
-      fixedItemsSummary: [
-        isDocEnglish
-          ? 'تم الفحص السياقي الأكاديمي لمطابقة المصادر'
-          : (contextualResult.isAiVerified
-            ? 'تم الفحص السياقي ومطابقة المصادر المعتمدة'
-            : 'تم التدقيق عبر محرك القواعد الشرعية'),
-        grammarAnalysis.report.overallGrammarVerdict,
-        structuralAnalysis.report.overallStructuralVerdict,
-        isDocEnglish
-          ? 'تم التدقيق التيبوغرافي للوثيقة بنجاح'
-          : quranicVerification.report.overallVerificationVerdict,
-        isDocEnglish
-          ? 'تمت معايرة وهيكلة الصفحات والجداول وتثبيت اتجاه LTR'
-          : layoutAnalysis.report.overallVerdict,
-        structIntegrity.report.overallVerdict,
-        `التدقيق المجهري الآلي: ${finalizedDocx.microscopicAuditReport.summary.overallVerdict} (تطابق ${finalizedDocx.microscopicAuditReport.summary.wordFidelityRatio}%)`,
-      ],
-      grammarSyntaxReport: grammarAnalysis.report,
-      structuralAuditReport: structuralAnalysis.report,
-      quranicVerificationReport: quranicVerification.report,
-      layoutIntegrityReport: layoutAnalysis.report,
-      structuralIntegrityReport: structIntegrity.report,
-      microscopicAuditReport: finalizedDocx.microscopicAuditReport,
-      textCleanerReport: finalizedDocx.textCleanerReport,
-      strictQAReport: finalizedDocx.strictQAResult,
-    };
+      startTime,
+      isDocEnglish,
+      contextualResult,
+      grammarAnalysis,
+      structuralAnalysis,
+      quranicVerification,
+      layoutAnalysis,
+      structuralIntegrityResult: structIntegrity,
+      finalized: finalizedDocx,
+    });
   }
 
   let workingPdfFile = file;
@@ -455,17 +562,16 @@ export async function convertDocumentFile(
     const pdfBase64 = await fileToBase64(workingPdfFile);
     let directJson: any = null;
     try {
-      const directRes = await apiFetch('/api/extract-direct-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const directRes = await extractDirectPdfRequest({
+        pdfBase64,
+        filename: file.name,
         signal: abortSignal,
-        body: JSON.stringify({ pdfBase64, filename: file.name }),
       });
       if (directRes.ok) {
-        directJson = await directRes.json();
+        directJson = directRes.data;
       }
     } catch (directErr: any) {
-      if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
+      assertNotAborted(abortSignal);
       console.warn('[Converter] Direct text extraction bypassed, falling back to AI:', directErr?.message || directErr);
     }
 
@@ -575,60 +681,27 @@ export async function convertDocumentFile(
       finalMarkdown = finalizedDirect.finalMarkdown;
 
       const isArabic = isRightToLeftText(finalMarkdown);
-        return {
+        return assembleFinalConversionResult({
           title: file.name.replace(/\.[^/.]+$/, ''),
           detectedLanguage: isArabic ? 'العربية' : 'English',
           textDirection: isArabic ? 'rtl' : 'ltr',
           hasArabicText: isArabic,
           hasMathOrScience: false,
-        hasTables: finalMarkdown.includes('|'),
-        hasHandwriting: false,
-        markdown: finalMarkdown,
-        plainText: finalizedDirect.plainText,
-        sourceExtractText: finalizedDirect.sourceExtractText,
-        fileName: file.name,
-        fileSize: file.size,
-        totalPages: detectedPages,
-        totalChunksProcessed: 1,
-        conversionDurationMs: Date.now() - startTime,
-        isAutoAudited: true,
-          // The audit panels are attached here as on the AI path
-          autoFixedCount:
-            contextualResult.fixedCount +
-            grammarAnalysis.report.truncatedItems.length +
-            structuralAnalysis.report.repairedCount +
-            quranicVerification.report.correctedVersesCount +
-            layoutAnalysis.report.tablesStabilizedCount +
-            layoutAnalysis.report.listsNormalizedCount +
-            structuralIntegrityResult.report.repairedDuplicationsCount +
-            finalizedDirect.textCleanerReport.totalReplacements +
-            finalizedDirect.strictQAResult.repairedCount,
-          fixedItemsSummary: [
-            isDocEnglish
-              ? 'تم الفحص السياقي الأكاديمي لمطابقة المصادر'
-              : (contextualResult.isAiVerified
-                ? 'تم الفحص السياقي ومطابقة المصادر المعتمدة'
-                : 'تم التدقيق عبر محرك القواعد الشرعية'),
-            grammarAnalysis.report.overallGrammarVerdict,
-            structuralAnalysis.report.overallStructuralVerdict,
-            isDocEnglish
-              ? 'تم التدقيق التيبوغرافي للوثيقة بنجاح'
-              : quranicVerification.report.overallVerificationVerdict,
-            isDocEnglish
-              ? 'تمت معايرة وهيكلة الصفحات والجداول وتثبيت اتجاه LTR'
-              : layoutAnalysis.report.overallVerdict,
-            structuralIntegrityResult.report.overallVerdict,
-            `التدقيق المجهري الآلي: ${finalizedDirect.microscopicAuditReport.summary.overallVerdict} (تطابق ${finalizedDirect.microscopicAuditReport.summary.wordFidelityRatio}%)`,
-          ],
-          grammarSyntaxReport: grammarAnalysis.report,
-          structuralAuditReport: structuralAnalysis.report,
-          quranicVerificationReport: quranicVerification.report,
-          layoutIntegrityReport: layoutAnalysis.report,
-          structuralIntegrityReport: structuralIntegrityResult.report,
-          microscopicAuditReport: finalizedDirect.microscopicAuditReport,
-          textCleanerReport: finalizedDirect.textCleanerReport,
-          strictQAReport: finalizedDirect.strictQAResult,
-        };
+          hasTables: finalMarkdown.includes('|'),
+          hasHandwriting: false,
+          file,
+          totalPages: detectedPages,
+          totalChunksProcessed: 1,
+          startTime,
+          isDocEnglish,
+          contextualResult,
+          grammarAnalysis,
+          structuralAnalysis,
+          quranicVerification,
+          layoutAnalysis,
+          structuralIntegrityResult,
+          finalized: finalizedDirect,
+        });
       }
     }
   }
@@ -667,11 +740,6 @@ export async function convertDocumentFile(
 
   try {
     // Dynamic Task Queue supporting automatic bisection on 413 / Gateway Timeout errors
-    interface DynamicChunkTask {
-      startPage: number;
-      endPage: number;
-    }
-
     const tasks: DynamicChunkTask[] = [];
     for (let c = startChunkIndex; c < chunksCount; c++) {
       tasks.push({
@@ -719,10 +787,7 @@ export async function convertDocumentFile(
 
       // Proactive size guard: if chunk is already > 15MB base64 and has > 1 page, bisect immediately!
       if (chunkBase64.length > 15 * 1024 * 1024 && pagesInTask > 1) {
-        const mid = Math.floor((currentTask.startPage + currentTask.endPage) / 2);
-        const leftTask: DynamicChunkTask = { startPage: currentTask.startPage, endPage: mid };
-        const rightTask: DynamicChunkTask = { startPage: mid + 1, endPage: currentTask.endPage };
-        tasks.splice(taskIdx, 1, leftTask, rightTask);
+        const { leftTask, rightTask } = splitAndInsertChunkTask(tasks, taskIdx, currentTask);
         onProgress?.({
           currentChunk: taskIdx + 1,
           totalChunks: tasks.length,
@@ -800,17 +865,11 @@ export async function convertDocumentFile(
         }, 1000);
 
         try {
-          const response = await apiFetch('/api/convert-pdf', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+          const response = await convertPdfChunkRequest({
+            pdfBase64: chunkBase64,
+            filename: `${file.name} (pages ${currentTask.startPage}-${currentTask.endPage})`,
+            options,
             signal: chunkTimeoutController.signal,
-            body: JSON.stringify({
-              pdfBase64: chunkBase64,
-              filename: `${file.name} (pages ${currentTask.startPage}-${currentTask.endPage})`,
-              options,
-            }),
           }).finally(() => {
             clearInterval(chunkHeartbeatTimer);
             clearTimeout(chunkTimeoutTimer);
@@ -819,9 +878,9 @@ export async function convertDocumentFile(
             }
           });
 
-          if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
+          assertNotAborted(abortSignal);
 
-          const responseText = await response.text();
+          const responseText = response.responseText;
           try {
             data = JSON.parse(responseText);
           } catch {
@@ -850,10 +909,7 @@ export async function convertDocumentFile(
             rawErrStr.toLowerCase().includes('entity too large');
 
           if (isPayloadTooLarge && pagesInTask > 1) {
-            const mid = Math.floor((currentTask.startPage + currentTask.endPage) / 2);
-            const leftTask: DynamicChunkTask = { startPage: currentTask.startPage, endPage: mid };
-            const rightTask: DynamicChunkTask = { startPage: mid + 1, endPage: currentTask.endPage };
-            tasks.splice(taskIdx, 1, leftTask, rightTask);
+            const { leftTask, rightTask } = splitAndInsertChunkTask(tasks, taskIdx, currentTask);
             onProgress?.({
               currentChunk: taskIdx + 1,
               totalChunks: tasks.length,
@@ -901,10 +957,7 @@ export async function convertDocumentFile(
 
             // If gateway timed out repeatedly on multi-page chunks, bisect to reduce workload
             if ((response.status === 504 || response.status === 502) && pagesInTask > 1 && chunkAttempt >= 1) {
-              const mid = Math.floor((currentTask.startPage + currentTask.endPage) / 2);
-              const leftTask: DynamicChunkTask = { startPage: currentTask.startPage, endPage: mid };
-              const rightTask: DynamicChunkTask = { startPage: mid + 1, endPage: currentTask.endPage };
-              tasks.splice(taskIdx, 1, leftTask, rightTask);
+              splitAndInsertChunkTask(tasks, taskIdx, currentTask);
               onProgress?.({
                 currentChunk: taskIdx + 1,
                 totalChunks: tasks.length,
@@ -943,8 +996,7 @@ export async function convertDocumentFile(
                 ? 'الخدمة تشهد ضغطاً مؤقتاً حالياً. الحفاظ على تقدمك: جاري إعادة المحاولة التلقائية'
                 : 'تم بلوغ حد الطلبات اللحظي في الدقيقة (Rate limit). الحفاظ على تقدمك: جاري الانتظار والاستئناف التلقائي';
 
-              for (let sec = waitSeconds; sec > 0; sec--) {
-                if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
+              await runAbortableCountdown(waitSeconds, abortSignal, (sec) => {
                 onProgress?.({
                   currentChunk: taskIdx + 1,
                   totalChunks: tasks.length,
@@ -960,10 +1012,9 @@ export async function convertDocumentFile(
                   processedChunksCount: completedTasksCount,
                   partialMarkdown: markdownPieces.join('\n\n---PAGE_BREAK---\n\n'),
                 });
-                await new Promise((r) => setTimeout(r, 1000));
-              }
+              });
 
-              if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
+              assertNotAborted(abortSignal);
               onProgress?.({
                 currentChunk: taskIdx + 1,
                 totalChunks: tasks.length,
@@ -985,9 +1036,7 @@ export async function convertDocumentFile(
             }
           }
         } catch (err: any) {
-          if (abortSignal?.aborted) {
-            throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
-          }
+          assertNotAborted(abortSignal);
           const isTimeout = err?.name === 'TimeoutError' || String(err).includes('timed out') || String(err).includes('aborted');
           const errMsg = isTimeout
             ? `استغرقت استجابة الصفحات (${currentTask.startPage}-${currentTask.endPage}) وقتاً أطول من المتوقع، جاري إعادة المحاولة التلقائية...`
@@ -995,10 +1044,7 @@ export async function convertDocumentFile(
           lastChunkError = errMsg || `خطأ في معالجة الحزمة ${taskIdx + 1}`;
 
           if (isTimeout && pagesInTask > 1 && chunkAttempt >= 1) {
-            const mid = Math.floor((currentTask.startPage + currentTask.endPage) / 2);
-            const leftTask: DynamicChunkTask = { startPage: currentTask.startPage, endPage: mid };
-            const rightTask: DynamicChunkTask = { startPage: mid + 1, endPage: currentTask.endPage };
-            tasks.splice(taskIdx, 1, leftTask, rightTask);
+            splitAndInsertChunkTask(tasks, taskIdx, currentTask);
             onProgress?.({
               currentChunk: taskIdx + 1,
               totalChunks: tasks.length,
@@ -1019,8 +1065,7 @@ export async function convertDocumentFile(
           if (chunkAttempt < maxAttempts - 1) {
             isLastThrottled = true;
             const waitSec = Math.min(25, 4 + chunkAttempt * 3);
-            for (let s = waitSec; s > 0; s--) {
-              if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
+            await runAbortableCountdown(waitSec, abortSignal, (s) => {
               onProgress?.({
                 currentChunk: taskIdx + 1,
                 totalChunks: tasks.length,
@@ -1036,8 +1081,7 @@ export async function convertDocumentFile(
                 processedChunksCount: completedTasksCount,
                 partialMarkdown: markdownPieces.join('\n\n---PAGE_BREAK---\n\n'),
               });
-              await new Promise((r) => setTimeout(r, 1000));
-            }
+            });
             continue;
           }
           await new Promise((r) => setTimeout(r, Math.min(8000, 1500 * (chunkAttempt + 1))));
@@ -1072,13 +1116,12 @@ export async function convertDocumentFile(
             });
 
             const pdfBase64 = await fileToBase64(workingPdfFile);
-            const directCheck = await apiFetch('/api/extract-direct-pdf', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+            const directCheck = await extractDirectPdfRequest({
+              pdfBase64,
+              filename: file.name,
               signal: abortSignal,
-              body: JSON.stringify({ pdfBase64, filename: file.name }),
             });
-            const directData = await directCheck.json();
+            const directData = directCheck.ok ? directCheck.data : null;
             if (directData?.success && directData?.data?.markdown) {
               const allDirectPages = directData.data.markdown.split(/---PAGE_BREAK---/);
               // Slice remaining pages from currentTask.startPage - 1 onwards
@@ -1163,8 +1206,7 @@ export async function convertDocumentFile(
       // Smart proactive pacing between chunks to strictly respect Gemini RPM limits
       const paceDuration = isLastThrottled ? 6 : 3;
       if (taskIdx < tasks.length) {
-        if (abortSignal?.aborted) throw new DOMException('تم إلغاء عملية التحويل', 'AbortError');
-        for (let sec = paceDuration; sec > 0; sec--) {
+        await runAbortableCountdown(paceDuration, abortSignal, (sec) => {
           onProgress?.({
             currentChunk: taskIdx,
             totalChunks: tasks.length,
@@ -1177,8 +1219,7 @@ export async function convertDocumentFile(
             processedChunksCount: completedTasksCount,
             partialMarkdown: markdownPieces.join('\n\n---PAGE_BREAK---\n\n'),
           });
-          await new Promise((r) => setTimeout(r, 1000));
-        }
+        });
       }
     }
   } finally {
@@ -1430,14 +1471,6 @@ export async function convertDocumentFile(
     rawMerged,
     file.name
   );
-  const {
-    finalMarkdown: mergedMarkdown,
-    plainText: mergedPlainText,
-    sourceExtractText,
-    textCleanerReport,
-    strictQAResult,
-    microscopicAuditReport,
-  } = finalizedPipeline;
 
   // Stage 7: Finalizing
   emitProgress({
@@ -1450,68 +1483,33 @@ export async function convertDocumentFile(
     phase: 'merging',
     activeStage: 'finalizing',
     stages: updateStageList('finalizing', 99, isDocEnglish),
-    statusMessage: `المرحلة الأخيرة: التدقيق المجهري التلقائي (تطابق ${microscopicAuditReport.summary.wordFidelityRatio}%) وبوابات الجودة (${strictQAResult.passedGatesCount}/${strictQAResult.totalGates}) وتجهيز مستند Word المعتمد...`,
+    statusMessage: `المرحلة الأخيرة: التدقيق المجهري التلقائي (تطابق ${finalizedPipeline.microscopicAuditReport.summary.wordFidelityRatio}%) وبوابات الجودة (${finalizedPipeline.strictQAResult.passedGatesCount}/${finalizedPipeline.strictQAResult.totalGates}) وتجهيز مستند Word المعتمد...`,
   });
 
-    const effectivePagesCount = effectiveEndPage && effectiveStartPage
-      ? effectiveEndPage - effectiveStartPage + 1
-      : totalPages;
+  const effectivePagesCount =
+    effectiveEndPage && effectiveStartPage ? effectiveEndPage - effectiveStartPage + 1 : totalPages;
 
-    const result: ConversionResult = {
-      title: docTitle,
-      detectedLanguage: detectedLang,
-      textDirection: docTextDirection,
-      totalPages: effectivePagesCount || totalPages,
-      totalChunksProcessed: chunksCount,
-      pageCountEstimate: effectivePagesCount || totalPages,
-    hasMathOrScience: hasMath,
+  return assembleFinalConversionResult({
+    title: docTitle,
+    detectedLanguage: detectedLang,
+    textDirection: docTextDirection,
     hasArabicText: hasArabic,
+    hasMathOrScience: hasMath,
     hasTables,
     hasHandwriting,
-    markdown: mergedMarkdown,
-    plainText: mergedPlainText,
-    sourceExtractText,
-    fileName: file.name,
-    fileSize: file.size,
-    conversionDurationMs: Date.now() - startTime,
-    isAutoAudited: true,
-    autoFixedCount:
-      contextualResult.fixedCount +
-      grammarAnalysis.report.truncatedItems.length +
-      structuralAnalysis.report.repairedCount +
-      quranicVerification.report.correctedVersesCount +
-      layoutAnalysis.report.tablesStabilizedCount +
-      layoutAnalysis.report.listsNormalizedCount +
-      structuralIntegrityResult.report.repairedDuplicationsCount +
-      textCleanerReport.totalReplacements +
-      strictQAResult.repairedCount,
-    fixedItemsSummary: [
-      isDocEnglish
-        ? 'تم الفحص السياقي الأكاديمي لمطابقة المصادر'
-        : (contextualResult.isAiVerified
-          ? 'تم الفحص السياقي لمطابقة المصادر المعتمدة'
-          : 'تم التدقيق عبر محرك القواعد الشرعية'),
-      grammarAnalysis.report.overallGrammarVerdict,
-      structuralAnalysis.report.overallStructuralVerdict,
-      isDocEnglish
-        ? 'تم التدقيق التيبوغرافي للوثيقة بنجاح'
-        : quranicVerification.report.overallVerificationVerdict,
-      isDocEnglish
-        ? 'تمت معايرة وهيكلة الصفحات والجداول وتثبيت اتجاه LTR'
-        : layoutAnalysis.report.overallVerdict,
-      structuralIntegrityResult.report.overallVerdict,
-      `التدقيق المجهري الآلي: ${microscopicAuditReport.summary.overallVerdict} (تطابق ${microscopicAuditReport.summary.wordFidelityRatio}%)`,
-    ],
-    grammarSyntaxReport: grammarAnalysis.report,
-    structuralAuditReport: structuralAnalysis.report,
-    quranicVerificationReport: quranicVerification.report,
-    layoutIntegrityReport: layoutAnalysis.report,
-    structuralIntegrityReport: structuralIntegrityResult.report,
-    microscopicAuditReport,
-    textCleanerReport,
-    strictQAReport: strictQAResult,
-    preFlightReport: preFlightReport,
-  };
-
-  return result;
+    file,
+    totalPages: effectivePagesCount || totalPages,
+    pageCountEstimate: effectivePagesCount || totalPages,
+    totalChunksProcessed: chunksCount,
+    startTime,
+    isDocEnglish,
+    contextualResult,
+    grammarAnalysis,
+    structuralAnalysis,
+    quranicVerification,
+    layoutAnalysis,
+    structuralIntegrityResult,
+    finalized: finalizedPipeline,
+    preFlightReport,
+  });
 }

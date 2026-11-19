@@ -16,38 +16,23 @@ import {
   Terminal,
   Unlock,
 } from 'lucide-react';
-import { apiFetch, setStoredTeamToken } from '../utils/apiClient';
+import { setStoredTeamToken } from '../utils/apiClient';
+import {
+  downloadLinksGuideBlob,
+  revokeAllTeamSessions,
+  saveTeamAuthConfig,
+} from '../api/teamAuthApi';
+import { fetchModelPoolStatus } from '../api/modelsApi';
+import { ADMIN_CONSOLE_LINKS } from '../config/adminDeployment';
+import type { TeamAuthStatusState } from '../model/auth';
+import type { ManagedModelView } from '../model/models';
 import { AgentCliHubPage } from './AgentCliHubPage';
 import {
   PROJECT_CUSTOM_INSTRUCTIONS_EN,
   PROJECT_CUSTOM_INSTRUCTIONS_AR,
 } from '../data/projectCustomInstructions';
 
-export interface TeamAuthStatusState {
-  lockEnabled: boolean;
-  authenticated: boolean;
-  envManaged: boolean;
-  hasPasscodeConfigured: boolean;
-  currentOrigin: string;
-  sharedPublicOrigin: string;
-  isDevPreviewHost: boolean;
-}
-
-interface ManagedModelView {
-  id: string;
-  displayName: string;
-  status:
-    | 'verified_free'
-    | 'candidate'
-    | 'cooldown'
-    | 'daily_exhausted'
-    | 'paid_required'
-    | 'unavailable';
-  cooldownRemainingSec: number;
-  successCount: number;
-  errorCount: number;
-  lastError: string | null;
-}
+export type { TeamAuthStatusState };
 
 interface AdminConsolePageProps {
   authStatus: TeamAuthStatusState | null;
@@ -130,12 +115,8 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
   const loadModelsStatus = async (forceRefresh = false) => {
     setIsLoadingModels(true);
     try {
-      const res = await apiFetch(
-        forceRefresh ? '/api/models/refresh' : '/api/models/status',
-        { method: forceRefresh ? 'POST' : 'GET' }
-      );
-      const data = await res.json();
-      if (data?.success && Array.isArray(data.models)) {
+      const data = await fetchModelPoolStatus(forceRefresh);
+      if (data) {
         setModels(data.models);
         setActiveModelsCount(data.activeCount || 0);
       }
@@ -164,11 +145,7 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
     setIsDownloadingGuide(true);
     setGuideDownloadNotice(null);
     try {
-      const res = await apiFetch('/api/links-guide/download');
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const blob = await res.blob();
+      const blob = await downloadLinksGuideBlob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -190,16 +167,8 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
     setIsSavingAuth(true);
     setAuthFeedback(null);
     try {
-      const res = await apiFetch('/api/auth/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          enabled: enableLock,
-          newCode: newCode.trim() || undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.success) {
+      const { ok, data } = await saveTeamAuthConfig(enableLock, newCode);
+      if (!ok || !data?.success) {
         setAuthFeedback({
           type: 'err',
           text: data?.error || 'تعذر حفظ إعدادات رمز الدخول.',
@@ -230,9 +199,8 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
     setIsSavingAuth(true);
     setAuthFeedback(null);
     try {
-      const res = await apiFetch('/api/auth/revoke-all', { method: 'POST' });
-      const data = await res.json();
-      if (res.ok && data?.success) {
+      const { ok, data } = await revokeAllTeamSessions();
+      if (ok && data?.success) {
         if (data.sessionToken) setStoredTeamToken(data.sessionToken);
         setAuthFeedback({
           type: 'ok',
@@ -245,17 +213,12 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
     }
   };
 
-  const publishedUrl = 'https://pdf-to-word-markdown-text-converter.ai.studio/';
-  const adminUrl = 'https://pdf-to-word-markdown-text-converter.ai.studio/?admin=1';
+  const { publishedUrl, adminUrl, fallbackPreUrl, devUrl, studioEditorUrl, deployCommand } =
+    ADMIN_CONSOLE_LINKS;
   const sharedPreUrl =
     authStatus?.sharedPublicOrigin && !authStatus.sharedPublicOrigin.includes('127.0.0.1')
       ? authStatus.sharedPublicOrigin
-      : 'https://ais-pre-wpsct27fdufcpry5x6ikjn-685461883733.europe-west2.run.app';
-  const devUrl =
-    'https://ais-dev-wpsct27fdufcpry5x6ikjn-685461883733.europe-west2.run.app';
-  const studioEditorUrl =
-    'https://aistudio.google.com/apps/003b657a-dcce-45ea-a80a-255c7ae94b18';
-  const deployCommand = 'bash deploy-cloudrun.sh doc-studio-team europe-west2';
+      : fallbackPreUrl;
 
   const instructionsText =
     instructionLang === 'en'
@@ -312,10 +275,13 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
       {/* Supervisor Sub-Navigation Tabs */}
       <nav
         aria-label="أقسام لوحة المشرف"
+        role="tablist"
         className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 dark:border-[#232938]"
       >
         <button
           type="button"
+          role="tab"
+          aria-selected={activeTab === 'overview'}
           onClick={() => setActiveTab('overview')}
           className={`px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
             activeTab === 'overview'
@@ -329,6 +295,8 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
 
         <button
           type="button"
+          role="tab"
+          aria-selected={activeTab === 'instructions'}
           onClick={() => setActiveTab('instructions')}
           className={`px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
             activeTab === 'instructions'
@@ -342,6 +310,8 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
 
         <button
           type="button"
+          role="tab"
+          aria-selected={activeTab === 'cli'}
           onClick={() => setActiveTab('cli')}
           className={`px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
             activeTab === 'cli'
@@ -411,6 +381,7 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
                   rel="noopener noreferrer"
                   className="p-1.5 rounded-lg border border-emerald-200 dark:border-emerald-500/30 bg-white dark:bg-[#0E1118] text-emerald-700 dark:text-emerald-300"
                   title="فتح الرابط العام"
+                  aria-label="فتح الرابط العام في نافذة جديدة"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>

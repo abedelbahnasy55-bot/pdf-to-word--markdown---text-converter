@@ -1,6 +1,6 @@
 import { autoFixQuranicErrors } from './quranAuditor';
 import { isDirectlyExtractedMarkdown } from './extractionOrigin';
-import { apiFetch } from './apiClient';
+import { contextualCheckRequest } from '../api/conversionApi';
 
 export interface ContextualCheckResult {
   correctedMarkdown: string;
@@ -63,9 +63,10 @@ export async function runContextualChecker(
   }
 
   // Step 3: Query the Server Contextual Checker Endpoint only when anomalous markers remain
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
+    timeoutId = setTimeout(() => {
       try {
         controller.abort(new DOMException('Contextual check timed out', 'TimeoutError'));
       } catch {
@@ -73,19 +74,11 @@ export async function runContextualChecker(
       }
     }, timeoutMs);
 
-    const response = await apiFetch('/api/contextual-check', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        markdown: baseMarkdown,
-        subjectHint,
-      }),
+    const response = await contextualCheckRequest({
+      markdown: baseMarkdown,
+      subjectHint,
       signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (response.ok) {
       const data = await response.json();
@@ -122,6 +115,8 @@ export async function runContextualChecker(
     if (!isTimeout) {
       console.warn('AI Contextual Checker network check bypassed, using canonical rule engine:', err?.message || err);
     }
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
 
   return {

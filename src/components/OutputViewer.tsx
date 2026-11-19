@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -91,6 +91,7 @@ export const OutputViewer: React.FC<OutputViewerProps> = ({
   const [customDirection, setCustomDirection] = useState<'rtl' | 'ltr'>(result.textDirection);
   const [fontProfile, setFontProfile] = useState<FontProfileId>('bilingual_publication');
   const [showAuditReports, setShowAuditReports] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isRtl = customDirection === 'rtl';
 
@@ -99,15 +100,8 @@ export const OutputViewer: React.FC<OutputViewerProps> = ({
   }, [result.markdown]);
 
   useEffect(() => {
-    const originalWarn = console.warn;
-    console.warn = (...args: any[]) => {
-      if (typeof args[0] === 'string' && args[0].includes('No character metrics for')) {
-        return;
-      }
-      originalWarn.apply(console, args);
-    };
     return () => {
-      console.warn = originalWarn;
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
     };
   }, []);
 
@@ -137,13 +131,19 @@ export const OutputViewer: React.FC<OutputViewerProps> = ({
 
   const handleCopy = async () => {
     const textToCopy = activeTab === 'text' ? result.plainText : result.markdown;
+    setDownloadError(null);
     try {
       await navigator.clipboard.writeText(textToCopy);
       setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => {
+        setIsCopied(false);
+        copyTimerRef.current = null;
+      }, 2000);
       onDownloadSuccess?.();
     } catch (err) {
       console.error('Failed to copy', err);
+      setDownloadError('تعذر النسخ التلقائي إلى الحافظة. يرجى تحديد النص ونسخه يدوياً.');
     }
   };
 
@@ -514,7 +514,7 @@ export const OutputViewer: React.FC<OutputViewerProps> = ({
                 {renderedMarkdown
                   .split(/(?:\n\s*---PAGE_BREAK---\s*\n|\n\n---\n\n)/)
                   .map((pageMarkdown, index, arr) => (
-                    <ErrorBoundary key={index}>
+                    <ErrorBoundary key={index} variant="inline">
                       <div
                         className={
                           index < arr.length - 1

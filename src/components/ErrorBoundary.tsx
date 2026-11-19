@@ -6,6 +6,7 @@ interface Props {
   children?: ReactNode;
   fallback?: ReactNode;
   onReset?: () => void;
+  variant?: 'page' | 'inline';
 }
 
 interface State {
@@ -67,6 +68,30 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       if (this.props.fallback) {
         return this.props.fallback;
+      }
+
+      if (this.props.variant === 'inline') {
+        return (
+          <div
+            className="my-3 p-4 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50/70 dark:bg-amber-500/10 text-amber-900 dark:text-amber-200 flex items-center justify-between gap-3 text-xs"
+            dir="rtl"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <ShieldAlert className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span className="font-semibold truncate">
+                تعذر عرض هذه الصفحة منسقةً. يمكنك متابعة القراءة من تبويب «نص خام» أو إعادة المحاولة.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={this.handleRetry}
+              className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold shrink-0 cursor-pointer inline-flex items-center gap-1"
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>إعادة العرض</span>
+            </button>
+          </div>
+        );
       }
 
       return (

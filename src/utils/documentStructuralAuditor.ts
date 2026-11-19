@@ -94,6 +94,10 @@ const CANONICAL_TOPIC_FOOTNOTES: Array<{
   },
 ];
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
  * Checks and audits document structure (headers hierarchy, numbering sequences, and footnotes).
  * Returns an audited report along with auto-repaired Markdown.
@@ -177,7 +181,7 @@ export async function documentStructuralAuditor(
 
     extractedFootnotesToMove.push(item.text);
     // Remove the displaced line from its misplaced spot in the text
-    repairedMd = repairedMd.replace(item.fullMatch, '');
+    repairedMd = repairedMd.replace(item.fullMatch, () => '');
   }
 
   // Check 1B: Canonical Missing Footnotes in known Azhar curricula topics (Topic 3: أول وآخر ما نزل)
@@ -328,7 +332,7 @@ export async function documentStructuralAuditor(
       });
 
       // Replace with formatted header
-      repairedMd = repairedMd.replace(unformattedMatch[0], `${item.level} ${matchedLine}`);
+      repairedMd = repairedMd.replace(unformattedMatch[0], () => `${item.level} ${matchedLine}`);
     }
   }
 
@@ -496,7 +500,9 @@ export async function documentStructuralAuditor(
 
         const docAfterIndex = repairedMd.slice(indexTableMatch.index! + indexTableMatch[0].length);
         const cleanTopicTerm = topicName.replace(/^(?:سورة|الموضوع\s+\S+:?|مبحث)\s*/, '').trim();
-        const topicPos = docAfterIndex.search(new RegExp(`(?:#+\\s*|\\*\\*\\s*)${cleanTopicTerm}`, 'i'));
+        const topicPos = cleanTopicTerm
+          ? docAfterIndex.search(new RegExp(`(?:#+\\s*|\\*\\*\\s*)${escapeRegExp(cleanTopicTerm)}`, 'i'))
+          : -1;
 
         if (topicPos !== -1) {
           const textBeforeTopic = docAfterIndex.slice(0, topicPos);
@@ -525,8 +531,9 @@ export async function documentStructuralAuditor(
     }
 
     if (hasIndexMismatches) {
-      const updatedTable = repairedTableLines.join('\n');
-      repairedMd = repairedMd.replace(rawTable, updatedTable);
+      const trailingWhitespace = rawTable.slice(rawTable.trimEnd().length);
+      const updatedTable = repairedTableLines.join('\n') + trailingWhitespace;
+      repairedMd = repairedMd.replace(rawTable, () => updatedTable);
     }
   }
 

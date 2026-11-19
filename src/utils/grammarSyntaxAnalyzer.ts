@@ -1,6 +1,6 @@
 import { GrammarSyntaxReport, IncompleteSentenceItem } from '../types';
 import { isDirectlyExtractedMarkdown } from './extractionOrigin';
-import { apiFetch } from './apiClient';
+import { grammarSyntaxCheckRequest } from '../api/conversionApi';
 
 /**
  * Pre-compiled academic & grammatical patterns for common abrupt terminations
@@ -168,23 +168,16 @@ export async function runGrammarSyntaxAnalyzer(
   }
 
   // Only attempt server-side completion when a critical open-ended truncation persists
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    const response = await apiFetch('/api/grammar-syntax-check', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        markdown: repairedMarkdown,
-        filename,
-      }),
+    const response = await grammarSyntaxCheckRequest({
+      markdown: repairedMarkdown,
+      filename,
       signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (response.ok) {
       const data = await response.json();
@@ -226,6 +219,8 @@ export async function runGrammarSyntaxAnalyzer(
     }
   } catch (err: any) {
     console.warn('AI Grammar Analyzer fallback to local heuristics:', err?.message || err);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
 
   return {

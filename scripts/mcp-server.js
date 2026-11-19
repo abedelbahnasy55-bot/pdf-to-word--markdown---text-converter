@@ -659,6 +659,22 @@ function unwrapModelMarkdownResponse(raw) {
   return text;
 }
 
+function buildCliThinkingConfig(modelName) {
+  const id = String(modelName || '').toLowerCase();
+  if (!id.startsWith('gemini-3') && !id.startsWith('gemini-4')) {
+    return {};
+  }
+  if (
+    id.includes('hydrogen') ||
+    id.startsWith('gemini-4') ||
+    id.startsWith('gemini-3.8') ||
+    id.startsWith('gemini-3.7')
+  ) {
+    return { thinkingConfig: { thinkingLevel: 'LOW' } };
+  }
+  return { thinkingConfig: { thinkingLevel: 'MINIMAL' } };
+}
+
 function getReadyGeminiModels() {
   const now = Date.now();
   const ready = OCR_MODELS_FALLBACK.filter((m) => !modelCoolDowns[m] || modelCoolDowns[m] <= now);
@@ -712,11 +728,10 @@ async function callDirectGeminiOcr(base64Data, filename, mimeType = 'application
   let lastErr = null;
 
   for (const model of modelsToTry) {
-    const isGemini4 = model.startsWith('gemini-4-');
     const config = {
       systemInstruction: MASTER_OCR_SYSTEM_PROMPT,
       maxOutputTokens: 32768,
-      ...(isGemini4 ? {} : { temperature: 0.0 }),
+      ...buildCliThinkingConfig(model),
     };
 
     try {
@@ -774,7 +789,7 @@ async function runOptionalDeepContextualVerify(markdown) {
           config: {
             systemInstruction,
             maxOutputTokens: 16384,
-            ...(model.startsWith('gemini-4-') ? {} : { temperature: 0.0 }),
+            ...buildCliThinkingConfig(model),
           },
         });
         const out = unwrapModelMarkdownResponse(res?.text || '');

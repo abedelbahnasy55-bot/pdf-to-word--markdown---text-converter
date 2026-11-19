@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { apiFetch } from '../utils/apiClient';
+import { checkApiHealth } from '../api/modelsApi';
+import { downloadCliArtifactBlob } from '../api/cliHubApi';
+import { getCliServerOrigin } from '../config/adminDeployment';
 import {
   ArrowRight,
   Terminal,
@@ -28,17 +30,11 @@ export const AgentCliHubPage: React.FC<AgentCliHubPageProps> = ({ onBack, embedd
   const [isPinging, setIsPinging] = useState(false);
   const [pingResult, setPingResult] = useState<{ ok: boolean; message: string } | null>(null);
 
-  const rawOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-  const serverUrl =
-    rawOrigin.includes('.ai.studio') || rawOrigin.includes('wpsct27fdufcpry5x6ikjn')
-      ? 'https://pdf-to-word-markdown-text-converter.ai.studio'
-      : rawOrigin;
+  const serverUrl = getCliServerOrigin();
 
   const handleDownloadScript = async (endpoint: string, filename: string) => {
     try {
-      const res = await apiFetch(endpoint);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
+      const blob = await downloadCliArtifactBlob(endpoint);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -52,22 +48,25 @@ export const AgentCliHubPage: React.FC<AgentCliHubPageProps> = ({ onBack, embedd
     }
   };
 
-  const copyToClipboard = (text: string, key: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 3000);
+  const copyToClipboard = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 3000);
+    } catch {
+      setPingResult({ ok: false, message: 'تعذر النسخ التلقائي إلى الحافظة.' });
+    }
   };
 
   const handleTestPing = async () => {
     setIsPinging(true);
     setPingResult(null);
     try {
-      const res = await apiFetch('/api/health');
+      const res = await checkApiHealth();
       if (res.ok) {
-        const data = await res.json();
         setPingResult({
           ok: true,
-          message: `المحرك يعمل بنجاح ومستعد لاستقبال الكتب مجاناً (${data.models?.join('، ') || 'الخدمة المجانية'})`,
+          message: `المحرك يعمل بنجاح ومستعد لاستقبال الكتب مجاناً (${res.data?.models?.join('، ') || 'الخدمة المجانية'})`,
         });
       } else {
         setPingResult({ ok: false, message: `تعذر الاتصال بالمحرك (${res.status})` });
@@ -127,6 +126,7 @@ ${mcpConfigJson}`;
             <button
               type="button"
               onClick={onBack}
+              aria-label="العودة لصفحة التحويل الرئيسية"
               className="p-2.5 rounded-xl bg-white dark:bg-[#141720] border border-slate-200 dark:border-[#2A3142] hover:bg-slate-50 dark:hover:bg-[#1B202C] text-slate-700 dark:text-slate-200 cursor-pointer flex items-center justify-center shrink-0"
               title="العودة لصفحة التحويل الرئيسية"
             >

@@ -104,8 +104,17 @@ export const HistoryList: React.FC<HistoryListProps> = ({
           return (
             <div
               key={item.id}
+              role="button"
+              tabIndex={0}
+              aria-label={`معاينة ${item.title || item.fileName}`}
               onClick={() => onSelect(item)}
-              className="group relative bg-white dark:bg-[#141720] border border-slate-200/90 dark:border-[#232938] hover:border-blue-400 dark:hover:border-blue-500/60 rounded-xl p-4 transition-colors cursor-pointer flex flex-col justify-between space-y-3"
+              onKeyDown={(e) => {
+                if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault();
+                  onSelect(item);
+                }
+              }}
+              className="group relative bg-white dark:bg-[#141720] border border-slate-200/90 dark:border-[#232938] hover:border-blue-400 dark:hover:border-blue-500/60 rounded-xl p-4 transition-colors cursor-pointer flex flex-col justify-between space-y-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
               <div className="space-y-1.5">
                 <div className="flex items-start justify-between gap-2">
@@ -178,6 +187,7 @@ export const HistoryList: React.FC<HistoryListProps> = ({
                 <button
                   type="button"
                   title="حذف من السجل"
+                  aria-label={`حذف ${item.title || item.fileName} من السجل`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onDelete(item.id);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   X,
   Clock,
@@ -33,6 +33,17 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
 }) => {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const formatDate = (ts: number) => {
@@ -63,8 +74,14 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 overflow-hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-label="الملفات المحفوظة والسابقة"
+    >
       <div
+        aria-hidden="true"
         onClick={onClose}
         className="absolute inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
       />
@@ -88,6 +105,7 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
           <button
             type="button"
             onClick={onClose}
+            aria-label="إغلاق قائمة الملفات المحفوظة"
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#1B202C] transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -108,11 +126,21 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
             items.map((item) => (
               <div
                 key={item.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`استعراض ${item.title || item.fileName}`}
                 onClick={() => {
                   onSelect(item);
                   onClose();
                 }}
-                className="group border border-slate-200 dark:border-[#232938] hover:border-blue-400 dark:hover:border-blue-500/60 rounded-xl p-3.5 bg-white dark:bg-[#191E2A] transition-colors cursor-pointer space-y-2.5"
+                onKeyDown={(e) => {
+                  if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    onSelect(item);
+                    onClose();
+                  }
+                }}
+                className="group border border-slate-200 dark:border-[#232938] hover:border-blue-400 dark:hover:border-blue-500/60 rounded-xl p-3.5 bg-white dark:bg-[#191E2A] transition-colors cursor-pointer space-y-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -166,6 +194,7 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
                       }}
                       className="p-1 text-slate-300 dark:text-slate-500 hover:text-red-500 rounded-md hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors cursor-pointer"
                       title="حذف"
+                      aria-label={`حذف ${item.title || item.fileName}`}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>

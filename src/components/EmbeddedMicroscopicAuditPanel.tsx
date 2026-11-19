@@ -24,8 +24,8 @@ import {
   TextCleanerEngine,
   CleanerRuleItem,
   CleanerAuditReport,
-} from '../utils/textCleanerEngine';
-import { TextProcessor } from '../utils/textProcessor';
+} from '../../shared/textCleanerEngine';
+import { TextProcessor } from '../../shared/textProcessor';
 import { StrictQAGatesEngine } from '../utils/strictQAGatesEngine';
 import { toStandardArabic } from '../../shared/arabicText';
 import { polishBilingualBoundariesCore } from '../../shared/arabicPipelineCore';
@@ -83,6 +83,7 @@ export const EmbeddedMicroscopicAuditPanel: React.FC<EmbeddedMicroscopicAuditPan
   const [targetMarkdown, setTargetMarkdown] = useState(result.markdown || '');
   const [activeSubTab, setActiveSubTab] = useState<'diff' | 'quran' | 'fiqh' | 'omissions'>('diff');
   const [copiedTarget, setCopiedTarget] = useState(false);
+  const [copyError, setCopyError] = useState(false);
 
   const [cleanerEngine] = useState(() => new TextCleanerEngine());
   const [cleanerRules, setCleanerRules] = useState<CleanerRuleItem[]>(() =>
@@ -105,6 +106,15 @@ export const EmbeddedMicroscopicAuditPanel: React.FC<EmbeddedMicroscopicAuditPan
     setTargetMarkdown(result.markdown || '');
     setLastCleanerReport(result.textCleanerReport || null);
   }, [result.fileName, result.markdown, result.sourceExtractText]);
+
+  useEffect(() => {
+    if (!isCleanerModalOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsCleanerModalOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isCleanerModalOpen]);
 
   const auditResult: MicroscopicAuditResult = useMemo(() => {
     if (
@@ -188,11 +198,14 @@ export const EmbeddedMicroscopicAuditPanel: React.FC<EmbeddedMicroscopicAuditPan
   };
 
   const handleCopyTarget = async () => {
+    setCopyError(false);
     try {
       await navigator.clipboard.writeText(targetMarkdown);
       setCopiedTarget(true);
       setTimeout(() => setCopiedTarget(false), 2000);
-    } catch {}
+    } catch {
+      setCopyError(true);
+    }
   };
 
   const isHealthyFidelity = summary.wordFidelityRatio >= 93 && summary.missingParagraphsCount === 0;
@@ -391,6 +404,11 @@ export const EmbeddedMicroscopicAuditPanel: React.FC<EmbeddedMicroscopicAuditPan
                         <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                         <span>تم النسخ</span>
                       </>
+                    ) : copyError ? (
+                      <>
+                        <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                        <span>تعذر النسخ</span>
+                      </>
                     ) : (
                       <>
                         <Copy className="w-3 h-3" />
@@ -541,6 +559,7 @@ export const EmbeddedMicroscopicAuditPanel: React.FC<EmbeddedMicroscopicAuditPan
               </div>
               <button
                 type="button"
+                aria-label="إغلاق نافذة إدارة قواعد القاموس"
                 onClick={() => setIsCleanerModalOpen(false)}
                 className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-[#1B202C] transition-colors cursor-pointer"
               >

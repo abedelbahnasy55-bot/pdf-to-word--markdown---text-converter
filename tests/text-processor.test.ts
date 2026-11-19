@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TextProcessor } from '../src/utils/textProcessor';
+import { TextProcessor } from '../shared/textProcessor';
 
 describe('TextProcessor Module', () => {
   it('1) Removes false-positive table noise like "ا" separators', () => {

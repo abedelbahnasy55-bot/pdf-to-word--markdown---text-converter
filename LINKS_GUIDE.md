@@ -72,8 +72,8 @@
 
 ## 5. مسارات التحقق السريعة (API Health Endpoints)
 
-- **فحص الخادم الحي:** `GET https://pdf-to-word-markdown-text-converter.ai.studio/api/health`
-- **نبضة الإبقاء متصلاً:** `GET https://pdf-to-word-markdown-text-converter.ai.studio/api/ping`
-- **مواصفات العقد والنماذج:** `GET https://pdf-to-word-markdown-text-converter.ai.studio/api/info`
-- **تحديث وفحص نماذج جيمناي المجانية:** `GET https://pdf-to-word-markdown-text-converter.ai.studio/api/models/status`
+- **فحص الخادم الحي (عام):** `GET https://pdf-to-word-markdown-text-converter.ai.studio/api/health`
+- **نبضة الإبقاء متصلاً (عام):** `GET https://pdf-to-word-markdown-text-converter.ai.studio/api/ping`
+- **مواصفات العقد والنماذج (محمي بالقفل عند تفعيله):** `GET https://pdf-to-word-markdown-text-converter.ai.studio/api/info`
+- **تحديث وفحص نماذج جيمناي المجانية (محمي بالقفل عند تفعيله):** `GET https://pdf-to-word-markdown-text-converter.ai.studio/api/models/status`
 

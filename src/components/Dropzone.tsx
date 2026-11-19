@@ -154,12 +154,22 @@ export const Dropzone: React.FC<DropzoneProps> = ({
         <>
           <div
             id="pdf-dropzone-container"
+            role="button"
+            tabIndex={isProcessing ? -1 : 0}
+            aria-disabled={isProcessing}
+            aria-label="اسحب ملفات PDF أو Word أو الصور هنا أو اضغط لاختيار ملفات"
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-2xl p-8 sm:p-12 text-center cursor-pointer transition-all duration-200 ${
+            onClick={() => !isProcessing && fileInputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (!isProcessing && (e.key === 'Enter' || e.key === ' ')) {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
+            className={`border-2 border-dashed rounded-2xl p-8 sm:p-12 text-center cursor-pointer transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
               isDragOver
                 ? 'border-blue-500 bg-blue-50/70 dark:bg-blue-500/10 scale-[1.01]'
                 : 'border-slate-300 dark:border-[#2A3142] bg-white dark:bg-[#141720] hover:border-blue-500 dark:hover:border-blue-500/70 hover:bg-slate-50/60 dark:hover:bg-[#171C28]'
@@ -230,6 +240,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
                     <input
                       type="number"
                       min={1}
+                      aria-label="من صفحة"
                       value={rangeStart}
                       onChange={(e) => setRangeStart(Math.max(1, parseInt(e.target.value) || 1))}
                       className="w-20 px-3 py-1.5 text-xs font-mono font-bold bg-slate-50 dark:bg-[#1B202C] border border-slate-200 dark:border-[#2A3142] rounded-lg text-center text-slate-900 dark:text-slate-100 tabular-nums"
@@ -240,6 +251,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
                     <input
                       type="number"
                       min={rangeStart}
+                      aria-label="إلى صفحة"
                       value={rangeEnd}
                       onChange={(e) =>
                         setRangeEnd(Math.max(rangeStart, parseInt(e.target.value) || rangeStart))
@@ -328,6 +340,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
                 onClick={clearAllFiles}
                 className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
                 title="مسح الكل"
+                aria-label="مسح كافة الملفات المختارة"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -362,6 +375,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
                   onClick={() => removeFile(idx)}
                   className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer shrink-0"
                   title="إزالة هذا الملف"
+                  aria-label={`إزالة الملف ${file.name}`}
                 >
                   <X className="w-4 h-4" />
                 </button>

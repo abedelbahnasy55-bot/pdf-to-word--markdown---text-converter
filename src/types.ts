@@ -1,5 +1,5 @@
 import type { MicroscopicAuditResult } from './utils/microscopicAuditEngine';
-import type { CleanerAuditReport } from './utils/textCleanerEngine';
+import type { CleanerAuditReport } from '../shared/textCleanerEngine';
 
 export interface ConversionOptions {
   /**
@@ -63,34 +63,6 @@ export interface QuranAuditResult {
   errors: QuranErrorItem[];
   hasQuranicDistortion: boolean;
   summary: string;
-}
-
-export interface DiffSegment {
-  type: 'unchanged' | 'modified' | 'added' | 'removed';
-  originalText?: string;
-  wordText?: string;
-  hasQuranError?: boolean;
-  quranErrorText?: string;
-  quranCorrectText?: string;
-  lineNumber: number;
-}
-
-export interface DocumentComparisonResult {
-  similarityScore: number;
-  totalLinesOriginal: number;
-  totalLinesWord: number;
-  missingContentCount: number;
-  modifiedContentCount: number;
-  identicalContentCount: number;
-  originalAudit: QuranAuditResult;
-  wordAudit: QuranAuditResult;
-  diffSegments: DiffSegment[];
-  summaryReport: {
-    overallVerdict: string;
-    hasCriticalQuranErrors: boolean;
-    missingSections: string[];
-    recommendations: string[];
-  };
 }
 
 export type ProcessingStageId =

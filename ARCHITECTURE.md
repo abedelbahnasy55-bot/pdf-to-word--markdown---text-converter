@@ -35,12 +35,22 @@ graph TD
 - Persists uploads, metadata, partial markdown pages, and completed `.docx` builds inside `.jobs/`.
 - Survives closed tabs, browser restarts, and long idle periods; exposes pause, resume from exact page, preview partial results, and calibrated Word (`.docx`) export.
 
-### D. Dynamic Free-Tier Model Pool (`server/modelPool.ts`)
+### D. Dynamic Free-Tier Model Pool & Shared Client (`server/modelPool.ts`, `server/clients/geminiClient.ts`)
 - Dynamically lists active `@google/genai` models via `ai.models.list()`, strips paid/specialty variants (`carbon`, `argon`, `image`, `lyria`, `omni`, `embedding`, `decision`, `-tts`, `-live`, standalone `pro`), rotates through active free-tier text models (`gemini-4-hydrogen`, `gemini-3.8-flash`, `gemini-3.7-flash`, `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.1-flash-lite`, `gemini-2.5-flash`), and enforces `buildSafeThinkingConfig(modelId)` (`LOW`, `MINIMAL`, or omitted on pre-3 models).
+- Centralizes Gemini execution retries, timeouts, and error classification (`executeWithModelPool`, `classifyGeminiHttpError`) in `server/clients/geminiClient.ts`.
 
-### E. Calibrated Bilingual DOCX Engine (`shared/typographyDocxCore.js`, `/api/export-docx`)
+### E. Calibrated Bilingual DOCX Engine (`shared/typographyDocxCore.js`, `server/controllers/exportRoutes.ts`)
 - Generates RTL/LTR schema-valid Word documents with `<w:bidi/>`, Arabic presentation-form normalization, KaTeX math support, Heritage/Publication typography profiles, and real underline runs (`<u>...</u>`) without requiring any external user login.
 
-### F. Idle Resilience & Team Access Gate (`server/teamAuth.ts`, `src/utils/apiClient.ts`, `src/utils/connectionKeepAlive.ts`)
+### F. Idle Resilience, Hardening & Team Access Gate (`server/teamAuth.ts`, `server/middleware/errorHandlers.ts`, `src/utils/apiClient.ts`, `src/utils/connectionKeepAlive.ts`)
 - `index.html` freezes `window.fetch`; internal app calls route through `apiFetch()` (automatically retrying `502`/`503`/`504` and attaching `X-Team-Session`).
 - Server configures `keepAliveTimeout = 620s` and `GET /api/ping`, paired with client wake-sync without jarring `window.location.reload()`.
+- Security hardening sets baseline headers (`X-Content-Type-Options: nosniff`, `Referrer-Policy`, `X-Frame-Options: SAMEORIGIN`), reflects request `Origin` with `Vary: Origin` + `Access-Control-Allow-Credentials: true` on CORS requests, validates strict job IDs against path traversal, and protects `/api/info` when Team Lock is enabled.
+
+### G. Project Directory Map
+- `server/` — Express controllers (`controllers/`), `backgroundJobManager.ts`, `modelPool.ts`, `clients/geminiClient.ts`, `middleware/errorHandlers.ts`, `config/runtimeConfig.ts`, `teamAuth.ts`, `smartCompilerRoutes.ts`, `pdfUnderlineExtractor.ts`
+- `shared/` — Cross-runtime Arabic, Quranic, semantic search, compilation, and DOCX OOXML core modules shared across frontend, backend, and CLI scripts
+- `src/` — Typed React SPA with extracted `api/`, `hooks/`, `model/`, `config/`, `utils/`, and accessible UI components under `components/`
+- `scripts/` — Standalone Node.js CLI batch runner, MCP v2.0 stdio server, and Python batch runner
+- `tests/` — Vitest characterization and regression suites (`npm test`) and golden fixtures (`tests/golden/`)
+

@@ -41,19 +41,21 @@ export function useConnectionKeepAlive({
     if (!enabled) return;
 
     let disposed = false;
+    let activeController: AbortController | null = null;
 
     const pingServer = async (triggerWakeCallbacks: boolean) => {
       if (disposed) return;
+      const controller = new AbortController();
+      activeController = controller;
+      let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         if (triggerWakeCallbacks) setIsReconnecting(true);
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 8000);
+        timer = setTimeout(() => controller.abort(), 8000);
         const res = await apiFetch(
           '/api/ping',
           { method: 'GET', cache: 'no-store', signal: controller.signal },
           { transientRetries: 2 }
         );
-        clearTimeout(timer);
         if (!disposed && res.ok) {
           setIsOffline(false);
           lastActivityRef.current = Date.now();
@@ -66,6 +68,8 @@ export function useConnectionKeepAlive({
           setIsOffline(true);
         }
       } finally {
+        if (timer !== undefined) clearTimeout(timer);
+        if (activeController === controller) activeController = null;
         if (!disposed) setIsReconnecting(false);
       }
     };
@@ -108,6 +112,7 @@ export function useConnectionKeepAlive({
 
     return () => {
       disposed = true;
+      activeController?.abort();
       clearInterval(heartbeatTimer);
       document.removeEventListener('visibilitychange', handleWake);
       window.removeEventListener('focus', handleWake);

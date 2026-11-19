@@ -1,4 +1,4 @@
-import { TextCleanerEngine, CleanerRuleItem } from './textCleanerEngine';
+import { TextCleanerEngine, CleanerRuleItem } from './textCleanerEngine.js';
 
 export interface TextProcessorOptions {
   removeTableNoise?: boolean;

@@ -49,6 +49,7 @@ export const LayoutIntegrityEngine: React.FC<LayoutIntegrityEngineProps> = ({
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
+          aria-expanded={isExpanded}
           className="px-3 py-1.5 rounded-lg bg-white dark:bg-[#141720] hover:bg-slate-50 dark:hover:bg-[#1B202C] border border-slate-200 dark:border-[#2A3142] text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shrink-0"
         >
           <span>{isExpanded ? 'طي التفاصيل' : 'فحص الصفحات'}</span>
@@ -120,10 +121,19 @@ export const LayoutIntegrityEngine: React.FC<LayoutIntegrityEngineProps> = ({
             {report.pageAudits.map((page: PageLayoutAuditItem) => (
               <div
                 key={page.pageNumber}
+                role="button"
+                tabIndex={0}
+                aria-expanded={selectedPage === page.pageNumber}
                 onClick={() =>
                   setSelectedPage(selectedPage === page.pageNumber ? null : page.pageNumber)
                 }
-                className="p-3 rounded-lg border border-slate-200 dark:border-[#252B3B] bg-slate-50/70 dark:bg-[#191E2A] hover:bg-slate-100/70 dark:hover:bg-[#1E2433] text-xs cursor-pointer transition-colors"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelectedPage(selectedPage === page.pageNumber ? null : page.pageNumber);
+                  }
+                }}
+                className="p-3 rounded-lg border border-slate-200 dark:border-[#252B3B] bg-slate-50/70 dark:bg-[#191E2A] hover:bg-slate-100/70 dark:hover:bg-[#1E2433] text-xs cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 <div className="flex items-center justify-between font-bold text-slate-900 dark:text-slate-100">
                   <div className="flex items-center gap-2 tabular-nums">

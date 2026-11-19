@@ -1,20 +1,14 @@
 import express from "express";
 import http from "http";
 import path from "path";
-import fs from "fs";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
-import { PDFParse } from "pdf-parse";
-import JSZip from "jszip";
-import * as docx from "docx";
-import { TextProcessor } from "./src/utils/textProcessor.js";
+import { TextProcessor } from "./shared/textProcessor.js";
 import { toStandardArabic } from "./shared/arabicText.js";
 import { polishBilingualBoundariesCore } from "./shared/arabicPipelineCore.js";
-import { TYPOGRAPHY_PROFILES, buildDocxBinary, DOCX_MIME } from "./shared/typographyDocxCore.js";
 import { registerSmartCompilerRoutes } from "./server/smartCompilerRoutes.js";
 import { registerBackgroundJobRoutes } from "./server/backgroundJobManager.js";
-import { registerTeamAuth, resolvePublicUrlInfo } from "./server/teamAuth.js";
+import { registerTeamAuth } from "./server/teamAuth.js";
 import {
   sharedModelPool,
   registerModelPoolRoutes,
@@ -22,562 +16,57 @@ import {
 } from "./server/modelPool.js";
 import {
   detectPdfUnderlines,
-  applyVerifiedUnderlinesToPageText,
   applyVerifiedUnderlinesToMarkdown,
   normalizeCombiningUnderlines,
   type PdfUnderlineDetectionResult,
 } from "./server/pdfUnderlineExtractor.js";
-
-function resolveProjectRoot(): string {
-  const cwd = process.cwd();
-  if (fs.existsSync(path.join(cwd, "package.json"))) {
-    return cwd;
-  }
-  if (typeof __dirname !== "undefined") {
-    return path.basename(__dirname) === "dist" ? path.dirname(__dirname) : __dirname;
-  }
-  return cwd;
-}
+import {
+  resolveProjectRoot,
+  resolveServerPort,
+  resolveServerHost,
+} from "./server/config/runtimeConfig.js";
+import {
+  apiCorsMiddleware,
+  securityHeadersMiddleware,
+  payloadAndSyntaxErrorHandler,
+  apiNotFoundHandler,
+  apiUnhandledErrorHandler,
+} from "./server/middleware/errorHandlers.js";
+import {
+  getGeminiClient,
+  executeWithModelPool,
+  classifyGeminiHttpError,
+} from "./server/clients/geminiClient.js";
+import { registerInfoAndCliRoutes } from "./server/controllers/infoAndCliRoutes.js";
+import { registerDirectExtractRoutes } from "./server/controllers/directExtractRoutes.js";
+import { registerExportRoutes } from "./server/controllers/exportRoutes.js";
 
 const PROJECT_ROOT = resolveProjectRoot();
 
 dotenv.config();
 
-function getPort(): number {
-  const portArgIdx = process.argv.indexOf("--port");
-  if (portArgIdx !== -1 && process.argv[portArgIdx + 1]) {
-    const p = parseInt(process.argv[portArgIdx + 1], 10);
-    if (!isNaN(p)) return p;
-  }
-  return Number(process.env.PORT) || 3000;
-}
-
-function getHost(): string {
-  const hostArgIdx = process.argv.indexOf("--host");
-  if (hostArgIdx !== -1 && process.argv[hostArgIdx + 1]) {
-    return process.argv[hostArgIdx + 1];
-  }
-  return process.env.HOST || "0.0.0.0";
-}
-
 const app = express();
-const PORT = getPort();
-const HOST = getHost();
+const PORT = resolveServerPort();
+const HOST = resolveServerHost();
 
-// Global CORS middleware for all /api/* routes (CLI, MCP, and external integrations)
-app.use("/api", (req, res, next) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Team-Session");
-  res.setHeader("Access-Control-Max-Age", "86400");
-  if (req.method === "OPTIONS") {
-    return res.status(204).end();
-  }
-  next();
-});
+app.use(securityHeadersMiddleware);
+app.use("/api", apiCorsMiddleware);
 
 // Increase payload limit for PDF base64 uploads (allowing large textbooks and multi-volume curricula)
 app.use(express.json({ limit: "250mb" }));
 app.use(express.urlencoded({ extended: true, limit: "250mb" }));
 
-// Express body-parser error-handling middleware (prevents raw HTML 413 / 400 errors)
-app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
-  if (err && (err.type === "entity.too.large" || err.status === 413)) {
-    return res.status(413).json({
-      success: false,
-      error: "حجم الحزمة كبير جداً.",
-      isPayloadTooLarge: true,
-      isRateLimit: false,
-      isUnavailable: false,
-    });
-  }
-  if (err && (err instanceof SyntaxError || err.status === 400)) {
-    return res.status(400).json({
-      success: false,
-      error: "استجابة غير صالحة: تنسيق بيانات الطلب غير صحيح.",
-    });
-  }
-  next(err);
-});
-
-// Server-side Gemini initialization
-let aiClient: GoogleGenAI | null = null;
-function getGeminiClient(): GoogleGenAI {
-  if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      console.warn("WARNING: GEMINI_API_KEY is not set. Conversions will require API key.");
-    }
-    aiClient = new GoogleGenAI({
-      apiKey: apiKey || "",
-      httpOptions: {
-        headers: {
-          "User-Agent": "aistudio-build",
-        },
-      },
-    });
-  }
-  return aiClient;
-}
+// Unified Express body-parser error-handling middleware (prevents raw HTML 413 / 400 errors)
+app.use(payloadAndSyntaxErrorHandler);
 
 // Team Passcode Auth Gate & Public Share Config (registered before protected routes)
 registerTeamAuth(app, PROJECT_ROOT);
 
-// Lightweight visibility heartbeat endpoint (prevents idle proxy/socket disconnects)
-app.get("/api/ping", (_req, res) => {
-  res.setHeader("Cache-Control", "no-store");
-  res.json({
-    ok: true,
-    ts: Date.now(),
-    uptimeSec: Math.floor(process.uptime()),
-  });
-});
+// Health, ping, API documentation, links guide, and CLI/MCP bundle download endpoints
+registerInfoAndCliRoutes(app, PROJECT_ROOT);
 
-// API Health Check & Contract Overview
-app.get("/api/health", (_req, res) => {
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.setHeader("Cache-Control", "no-store");
-  res.json({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-    mcpSupported: true,
-    cliSupported: true,
-    models: sharedModelPool.getCandidateModels(),
-    rateLimitPolicy: "HTTP 429 with retryAfterSeconds",
-    maxChunkPagesRecommended: "2-4 pages",
-  });
-});
-
-const CANONICAL_PUBLISHED_ORIGIN = "https://pdf-to-word-markdown-text-converter.ai.studio";
-
-/**
- * Resolves the canonical public origin URL, preferring the published .ai.studio domain
- * when running in AI Studio / Cloud Run so external clients always receive a reachable URL.
- */
-function getPublicOrigin(req: express.Request): string {
-  const info = resolvePublicUrlInfo(req);
-  if (
-    info.currentOrigin.includes(".ai.studio") ||
-    info.currentOrigin.includes("wpsct27fdufcpry5x6ikjn") ||
-    info.sharedPublicOrigin.includes("wpsct27fdufcpry5x6ikjn")
-  ) {
-    return CANONICAL_PUBLISHED_ORIGIN;
-  }
-  return info.sharedPublicOrigin;
-}
-
-// Full API Documentation & Contract Specification
-app.get("/api/info", (req, res) => {
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  const origin = getPublicOrigin(req);
-
-  res.json({
-    name: "PDF Converter API",
-    version: "2.1.0",
-    serverOrigin: origin,
-    endpoints: {
-      health: { method: "GET", path: "/api/health" },
-      ping: { method: "GET", path: "/api/ping" },
-      info: { method: "GET", path: "/api/info" },
-      extractDirectPdf: { method: "POST", path: "/api/extract-direct-pdf" },
-      convertPdf: { method: "POST", path: "/api/convert-pdf" },
-      exportDocx: { method: "POST", path: "/api/export-docx" },
-      jobs: { method: "GET/POST", path: "/api/jobs" },
-      modelsStatus: { method: "GET", path: "/api/models/status" },
-      authStatus: { method: "GET", path: "/api/auth/status" },
-      compiler: { method: "POST", path: "/api/compiler/*" },
-      cliDownload: { method: "GET", path: "/api/cli/download/:scriptName" },
-      linksGuideDownload: { method: "GET", path: "/api/links-guide/download" },
-    },
-    convertPdfContract: {
-      method: "POST",
-      url: `${origin}/api/convert-pdf`,
-      headers: { "Content-Type": "application/json" },
-      timeoutSeconds: 180,
-      limits: {
-        maxHttpBodyPayload: "250mb",
-        maxChunkBase64Size: "24mb",
-        recommendedPagesPerChunk: "2-4 pages (avoids rate limits and maintains verbatim accuracy)",
-        magicByteValidation: ["%PDF", "PNG", "JPEG"],
-      },
-      requestBodySchema: {
-        pdfBase64: "Required string. Base64-encoded PDF or image data.",
-        filename: "Optional string. Name of the book/document (e.g. 'balagha.pdf').",
-        options: {
-          direction: "Optional 'rtl' | 'ltr' | 'auto'. Default: 'rtl'.",
-          preserveHandwriting: "Optional boolean. Default: true.",
-        },
-      },
-      responseSuccessSchema: {
-        success: true,
-        data: {
-          title: "string",
-          detectedLanguage: "string",
-          textDirection: "rtl | ltr",
-          pageCountEstimate: "number",
-          markdown: "string (pristine verbatim Markdown with authentic Uthmani Quran in ﴿...﴾ and tables)",
-          plainText: "string",
-          hasArabicText: "boolean",
-          hasTables: "boolean",
-          hasMathOrScience: "boolean",
-        },
-      },
-      responseErrorSchema: {
-        success: false,
-        error: "string",
-        isRateLimit: "boolean (true on HTTP 429)",
-        retryAfterSeconds: "number (seconds client should pause before retrying)",
-        code: "string",
-      },
-      modelFallbackOrder: sharedModelPool.getCandidateModels(),
-    },
-  });
-});
-
-// Downloadable Links & Deployment Reference Guide
-app.get("/api/links-guide/download", (_req, res) => {
-  const guidePath = path.join(PROJECT_ROOT, "LINKS_GUIDE.md");
-  if (!fs.existsSync(guidePath)) {
-    return res.status(404).json({ success: false, error: "ملف دليل الروابط غير موجود." });
-  }
-  const content = fs.readFileSync(guidePath, "utf-8");
-  res.setHeader("Content-Type", "text/markdown; charset=utf-8");
-  res.setHeader("Content-Disposition", 'attachment; filename="LINKS_GUIDE.md"');
-  return res.send(content);
-});
-
-// MCP & CLI Tools Info
-app.get("/api/cli/tools-info", (_req, res) => {
-  res.json({
-    status: "ok",
-    serverVersion: "2.0.0",
-    mcpProtocolVersion: "2024-11-05",
-    offlineCapable: true,
-    typographyProfiles: Object.values(TYPOGRAPHY_PROFILES),
-    tools: [
-      {
-        name: "scan_books_directory",
-        description: "مسح مجلد الكتب وحساب عدد الصفحات والأحجام (PDF / Word / Markdown / Images)",
-      },
-      {
-        name: "convert_book_to_word",
-        description: "تحويل كتاب محدد إلى مستند Word (.docx) بالخطوط المعايرة وفصل الاتجاه العربي/الإنجليزي مع العمل تلقائياً حتى عند توقف السيرفر",
-      },
-      {
-        name: "batch_convert_folder",
-        description: "تحويل مجمّع لكامل المجلد مع أرشفة حزم ZIP مجدولة (كل 15 كتاباً) واستئناف ذكي",
-      },
-      {
-        name: "get_batch_status",
-        description: "متابعة حالة التقدم والاستئناف التلقائي وتقارير الحزم",
-      },
-      {
-        name: "audit_and_repair_document",
-        description: "تدقيق وإصلاح ملفات Markdown أو Word (.docx) محلياً وإعادة تصديرها بأعلى دقة مطبعية وبوابات QA",
-      },
-      {
-        name: "export_markdown_to_docx",
-        description: "تحويل فوري دون إنترنت من نص أو ملف Markdown إلى مستند Word (.docx) احترافي",
-      },
-      {
-        name: "check_pipeline_health",
-        description: "فحص جاهزية السيرفر والوضع المحلي (Offline Fallback) ومستويات الخطوط المعتمدة",
-      },
-    ],
-  });
-});
-
-// Script & Bundle Downloader endpoint with dynamic environment origin injection
-app.get("/api/cli/download/:scriptName", async (req, res) => {
-  const { scriptName } = req.params;
-
-  // Determine canonical server URL
-  const currentOrigin = getPublicOrigin(req);
-
-  const replaceOrigin = (code: string) => {
-    return code
-      .replace(
-        /https:\/\/ais-(?:dev|pre)-wpsct27fdufcpry5x6ikjn-685461883733\.europe-west2\.run\.app/g,
-        currentOrigin
-      )
-      .replace(
-        /https:\/\/pdf-to-word-markdown-text-converter\.ai\.studio/g,
-        currentOrigin
-      );
-  };
-
-  // Support full ZIP distribution bundle containing all necessary files and dependencies
-  if (scriptName === "bundle" || scriptName === "bundle.zip" || scriptName === "all") {
-    try {
-      const zip = new JSZip();
-      const scriptsDir = path.join(PROJECT_ROOT, "scripts");
-      const sharedDir = path.join(PROJECT_ROOT, "shared");
-
-      const filesToBundle = [
-        { name: "mcp-server.js", replace: true },
-        { name: "batch-runner.js", replace: true },
-        { name: "package.json", replace: false },
-        { name: "install.sh", replace: false },
-        { name: "install.bat", replace: false },
-        { name: "README.md", replace: true },
-        { name: "run_batch.sh", replace: true },
-        { name: "run_batch.bat", replace: true },
-        { name: "batch_runner.py", replace: true },
-      ];
-
-      for (const f of filesToBundle) {
-        const fullPath = path.join(scriptsDir, f.name);
-        if (fs.existsSync(fullPath)) {
-          let fileData = fs.readFileSync(fullPath, "utf-8");
-          if (f.replace) {
-            fileData = replaceOrigin(fileData);
-          }
-          zip.file(f.name, fileData);
-        }
-      }
-
-      // Include unified shared typography & Arabic/bilingual QA pipeline cores inside shared/
-      for (const sharedFile of ["arabicPipelineCore.js", "typographyDocxCore.js"]) {
-        const sharedPath = path.join(sharedDir, sharedFile);
-        if (fs.existsSync(sharedPath)) {
-          zip.file(`shared/${sharedFile}`, fs.readFileSync(sharedPath, "utf-8"));
-        }
-      }
-
-      const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
-      res.setHeader("Content-Disposition", 'attachment; filename="books-word-converter-cli.zip"');
-      res.setHeader("Content-Type", "application/zip");
-      return res.send(zipBuffer);
-    } catch (err: any) {
-      console.error("Error creating CLI bundle ZIP:", err);
-      return res.status(500).json({ success: false, error: "Failed to generate distribution bundle" });
-    }
-  }
-
-  const scriptMap: Record<string, { path: string; filename: string; mime: string }> = {
-    "mcp-server": {
-      path: path.join(PROJECT_ROOT, "scripts", "mcp-server.js"),
-      filename: "mcp-server.js",
-      mime: "application/javascript; charset=utf-8",
-    },
-    "batch-runner-js": {
-      path: path.join(PROJECT_ROOT, "scripts", "batch-runner.js"),
-      filename: "batch-runner.js",
-      mime: "application/javascript; charset=utf-8",
-    },
-    "batch-runner-py": {
-      path: path.join(PROJECT_ROOT, "scripts", "batch_runner.py"),
-      filename: "batch_runner.py",
-      mime: "text/x-python; charset=utf-8",
-    },
-    "run-batch-bat": {
-      path: path.join(PROJECT_ROOT, "scripts", "run_batch.bat"),
-      filename: "run_batch.bat",
-      mime: "application/x-bat; charset=utf-8",
-    },
-    "run-batch-sh": {
-      path: path.join(PROJECT_ROOT, "scripts", "run_batch.sh"),
-      filename: "run_batch.sh",
-      mime: "application/x-sh; charset=utf-8",
-    },
-    "package-json": {
-      path: path.join(PROJECT_ROOT, "scripts", "package.json"),
-      filename: "package.json",
-      mime: "application/json; charset=utf-8",
-    },
-    "package.json": {
-      path: path.join(PROJECT_ROOT, "scripts", "package.json"),
-      filename: "package.json",
-      mime: "application/json; charset=utf-8",
-    },
-    "install-sh": {
-      path: path.join(PROJECT_ROOT, "scripts", "install.sh"),
-      filename: "install.sh",
-      mime: "application/x-sh; charset=utf-8",
-    },
-    "install.sh": {
-      path: path.join(PROJECT_ROOT, "scripts", "install.sh"),
-      filename: "install.sh",
-      mime: "application/x-sh; charset=utf-8",
-    },
-    "install-bat": {
-      path: path.join(PROJECT_ROOT, "scripts", "install.bat"),
-      filename: "install.bat",
-      mime: "application/x-bat; charset=utf-8",
-    },
-    "install.bat": {
-      path: path.join(PROJECT_ROOT, "scripts", "install.bat"),
-      filename: "install.bat",
-      mime: "application/x-bat; charset=utf-8",
-    },
-    "readme": {
-      path: path.join(PROJECT_ROOT, "scripts", "README.md"),
-      filename: "README.md",
-      mime: "text/markdown; charset=utf-8",
-    },
-    "readme.md": {
-      path: path.join(PROJECT_ROOT, "scripts", "README.md"),
-      filename: "README.md",
-      mime: "text/markdown; charset=utf-8",
-    },
-  };
-
-  const target = scriptMap[scriptName];
-  if (!target || !fs.existsSync(target.path)) {
-    return res.status(404).json({ success: false, error: "Script not found" });
-  }
-
-  try {
-    let content = fs.readFileSync(target.path, "utf-8");
-    content = replaceOrigin(content);
-    res.setHeader("Content-Disposition", `attachment; filename="${target.filename}"`);
-    res.setHeader("Content-Type", target.mime);
-    return res.send(content);
-  } catch {
-    res.setHeader("Content-Disposition", `attachment; filename="${target.filename}"`);
-    res.setHeader("Content-Type", target.mime);
-    return res.sendFile(target.path);
-  }
-});
-
-function getAvailableModels(): string[] {
-  return sharedModelPool.getCandidateModels();
-}
-
-/**
- * Line-join threshold handed to pdf-parse. The previous implementation used
- * `Math.abs(lastY - item.transform[5]) < 4` to decide whether two text items
- * belonged to the same line, so 4 is the direct translation of that rule.
- */
-const LINE_JOIN_Y_THRESHOLD = 4;
-
-const PAGE_BREAK_MARKER = "---PAGE_BREAK---";
-
-/**
- * Direct PDF text extraction helper using pdf-parse.
- * Runs locally on the server in milliseconds with 0 Gemini API calls.
- * Preserves page breaks (---PAGE_BREAK---), structures headings, questions, and RTL text.
- */
-async function extractDirectTextFromPdf(pdfBuffer: Buffer): Promise<{
-  text: string;
-  markdown: string;
-  totalPages: number;
-  hasDigitalText: boolean;
-}> {
-  // pdf-parse v2 owns a pdf.js worker, so it must always be torn down. Without
-  // the finally block a long-lived server would accumulate one worker per call.
-  const parser = new PDFParse({ data: new Uint8Array(pdfBuffer) });
-
-  try {
-    const [parsed, underlineResult] = await Promise.all([
-      parser.getText({ lineThreshold: LINE_JOIN_Y_THRESHOLD }),
-      detectPdfUnderlines(pdfBuffer).catch(() => ({ pages: [], totalUnderlines: 0 } as PdfUnderlineDetectionResult)),
-    ]);
-
-    const underlineByPage = new Map<number, string[]>();
-    for (const pg of underlineResult.pages) {
-      if (pg.underlinedPhrases.length > 0) {
-        underlineByPage.set(pg.pageNumber, pg.underlinedPhrases);
-      }
-    }
-
-    // v2 returns text per page, which is a more direct source for page
-    // boundaries than the v1 pagerender hook had to reconstruct by hand.
-    const rawPageTexts = parsed.pages.length > 0 ? parsed.pages.map((page) => page.text) : [parsed.text];
-
-    // The v1 pagerender already appended the marker to every page, so callers
-    // downstream expect the marker embedded in rawText, not only in markdown.
-    const rawText = rawPageTexts
-      .map((pg) => pg.replace(/[\u0332\u0333]/g, ''))
-      .join(`\n\n${PAGE_BREAK_MARKER}\n\n`);
-    const totalPages = parsed.total || rawPageTexts.length || 1;
-
-    // Split by page break marker
-    const rawPages = rawPageTexts
-      .map((p: string) => p.trim())
-      .filter((p: string) => p.length > 0);
-
-    const formattedPages = (rawPages.length > 0 ? rawPages : [rawText.trim()]).map((page: string, idx: number) => {
-      const lines = page.split('\n');
-      const mdLines = lines.map((line: string) => {
-        const trimmed = line.trim();
-        if (!trimmed) return '';
-        // Chapter / Unit / Lesson headings (note JS \b fails on Arabic letters, use explicit lookahead)
-        if (/^(?:(?:الوحدة|الدرس|الباب|الفصل|المبحث|المطلب|المقدمة|سلسلة|كتاب|المذكرة)(?=\s|$|:|—|-)|(?:Unit|Chapter|Lesson|PART|MODULE)\b)/i.test(trimmed)) {
-          return `## ${trimmed}`;
-        }
-        // Questions (e.g. س 1 أو س١ أو السؤال الأول..العاشر أو 1. أو (١))
-        if (/^(?:س\s*[٠-٩\d]+[:.\-)]?|السؤال\s+(?:الأول|الثاني|الثالث|الرابع|الخامس|السادس|السابع|الثامن|التاسع|العاشر|[٠-٩\d]+)|[٠-٩\d]+[\.\-\)]|\([٠-٩\d]+\))\s+/i.test(trimmed)) {
-          return `\n### ${trimmed}`;
-        }
-        return trimmed;
-      });
-      const mdPage = mdLines.join('\n');
-      return applyVerifiedUnderlinesToPageText(mdPage, underlineByPage.get(idx + 1) || [], false);
-    });
-
-    let fullMarkdown = formattedPages.join(`\n\n${PAGE_BREAK_MARKER}\n\n`);
-    // Normalize Arabic presentations, mojibake, and OCR symbols + polish Arabic/English boundaries
-    fullMarkdown = polishBilingualBoundariesCore(toStandardArabic(normalizeCombiningUnderlines(fullMarkdown)));
-    const hasDigitalText = rawText.replace(/\s+/g, '').length > 50;
-
-    return {
-      text: rawText,
-      markdown: fullMarkdown,
-      totalPages,
-      hasDigitalText,
-    };
-  } finally {
-    await parser.destroy();
-  }
-}
-
-// Direct High-Speed Zero-Quota Extraction Endpoint
-app.post("/api/extract-direct-pdf", async (req, res) => {
-  try {
-    const { pdfBase64, filename } = req.body;
-    if (!pdfBase64) {
-      return res.status(400).json({ success: false, error: "No PDF data provided" });
-    }
-    const cleanBase64 = pdfBase64.replace(/^data:[^;]+;base64,/, "");
-    const pdfBuffer = Buffer.from(cleanBase64, "base64");
-    const result = await extractDirectTextFromPdf(pdfBuffer);
-
-    if (!result.hasDigitalText) {
-      return res.json({
-        success: false,
-        hasDigitalText: false,
-        error: "لم يتم العثور على طبقة نصوص رقمية في الملف (الملف عبارة عن صور ممسوحة ضوئياً ويحتاج إلى التعرف البصري OCR).",
-      });
-    }
-
-    const isArabic = (result.markdown.match(/[\u0600-\u06FF]/g) || []).length > 20;
-
-    return res.json({
-      success: true,
-      hasDigitalText: true,
-      data: {
-        title: (filename || "document").replace(/\.[^/.]+$/, ""),
-        detectedLanguage: isArabic ? "العربية" : "English",
-        textDirection: isArabic ? "rtl" : "ltr",
-        hasArabicText: isArabic,
-        hasMathOrScience: false,
-        hasTables: result.markdown.includes("|"),
-        hasHandwriting: false,
-        markdown: result.markdown,
-        plainText: result.text,
-        totalPages: result.totalPages,
-        method: "direct_digital_extraction",
-      },
-    });
-  } catch (err: any) {
-    console.error("Direct PDF extraction error:", err);
-    return res.status(500).json({
-      success: false,
-      error: err?.message || "تعذر الاستخراج الرقمي المباشر",
-    });
-  }
-});
+// Zero-quota digital-first PDF text extraction & vector underline endpoint
+registerDirectExtractRoutes(app);
 
 // PDF Conversion Endpoint
 app.post("/api/convert-pdf", async (req, res) => {
@@ -602,11 +91,15 @@ app.post("/api/convert-pdf", async (req, res) => {
       });
     }
 
-    // Check magic numbers for PDF (%PDF), PNG (\x89PNG), or JPEG (\xFF\xD8)
+    // Check magic numbers for PDF (%PDF), PNG (\x89PNG), JPEG (\xFF\xD8), or WEBP (RIFF....WEBP)
     const isPdfHeader = bufferHeader.subarray(0, 4).toString("ascii").startsWith("%PDF");
     const isPngHeader = bufferHeader.length >= 8 && bufferHeader[0] === 0x89 && bufferHeader[1] === 0x50 && bufferHeader[2] === 0x4E && bufferHeader[3] === 0x47;
     const isJpegHeader = bufferHeader.length >= 2 && bufferHeader[0] === 0xFF && bufferHeader[1] === 0xD8;
-    const isSupportedMime = isPdfHeader || isPngHeader || isJpegHeader;
+    const isWebpHeader =
+      bufferHeader.length >= 12 &&
+      bufferHeader.subarray(0, 4).toString("ascii") === "RIFF" &&
+      bufferHeader.subarray(8, 12).toString("ascii") === "WEBP";
+    const isSupportedMime = isPdfHeader || isPngHeader || isJpegHeader || isWebpHeader;
 
     if (!isSupportedMime && bufferHeader.length < 32) {
       return res.status(400).json({
@@ -715,14 +208,15 @@ OUTPUT DIRECTLY AS PRISTINE MARKDOWN ONLY (Do not wrap in JSON).`;
     if (isPdfHeader) {
       try {
         const pdfChunkBuf = Buffer.from(cleanBase64, "base64");
-        let guardTimer: any;
+        let guardTimer: ReturnType<typeof setTimeout> | undefined;
         detectedPdfUnderlines = await Promise.race([
           detectPdfUnderlines(pdfChunkBuf),
           new Promise<PdfUnderlineDetectionResult>((resolve) => {
             guardTimer = setTimeout(() => resolve({ pages: [], totalUnderlines: 0 }), 2500);
           }),
-        ]);
-        if (guardTimer) clearTimeout(guardTimer);
+        ]).finally(() => {
+          if (guardTimer) clearTimeout(guardTimer);
+        });
 
         if (detectedPdfUnderlines.totalUnderlines > 0) {
           const hintLines = detectedPdfUnderlines.pages
@@ -738,104 +232,57 @@ OUTPUT DIRECTLY AS PRISTINE MARKDOWN ONLY (Do not wrap in JSON).`;
       }
     }
 
-    let response: any = null;
-    let lastError: any = null;
-
-    // Retry loop with exponential backoff across available Gemini models
-    const MAX_ROUNDS = 3;
-    for (let round = 0; round < MAX_ROUNDS && !response; round++) {
-      const modelsToTry = getAvailableModels();
-
-      if (round > 0) {
-        // Backoff delay before subsequent round with jitter
-        const delayMs = Math.min(10000, 1500 + round * 1200 + Math.floor(Math.random() * 500));
-        console.log(`[Backoff Round ${round + 1}/${MAX_ROUNDS}] Pausing ${delayMs}ms before retrying models...`);
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-      }
-
-      const earliestWaitMs = sharedModelPool.getEarliestReadyWaitMs();
-
-      if (earliestWaitMs > 0) {
-        const waitSec = Math.max(1, Math.min(60, Math.ceil(earliestWaitMs / 1000)));
-
-        if (waitSec <= 15) {
-          console.log(`[Rate Limit Guard] All models on cooldown. Waiting ${waitSec}s on server...`);
-          await new Promise((r) => setTimeout(r, (waitSec + 1) * 1000));
-        } else {
-          console.log(`[Rate Limit Guard] Models in cooldown for ${waitSec}s. Delegating wait to client.`);
-          return res.status(429).json({
-            success: false,
-            error: "تم بلوغ حد الطلبات اللحظي في الدقيقة (Rate limit). يرجى الانتظار ثوانٍ قليلة...",
-            isRateLimit: true,
-            isUnavailable: false,
-            isPeakDemand: false,
-            retryAfterSeconds: waitSec + 1,
-          });
-        }
-      }
-
-      for (const modelName of modelsToTry) {
-        try {
-          console.log(`[Round ${round + 1}/${MAX_ROUNDS}] Sending conversion request using model: ${modelName}...`);
-          let timeoutHandle: any;
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            timeoutHandle = setTimeout(() => {
-              reject(new Error(`Model ${modelName} call timed out after 45s (peak demand safeguard)`));
-            }, 45000);
-          });
-
-          const modelCallPromise = ai.models.generateContent({
-            model: modelName,
-            contents: [
-              {
-                role: "user",
-                parts: [
-                  {
-                    inlineData: {
-                      mimeType: mimeType,
-                      data: cleanBase64,
-                    },
+    const outcome = await executeWithModelPool({
+      ai,
+      maxRounds: 3,
+      timeoutMs: 45000,
+      respectCooldownGate: true,
+      pauseBetweenRounds: true,
+      pauseBetweenModelsMs: 400,
+      buildTimeoutMessage: (modelName) =>
+        `Model ${modelName} call timed out after 45s (peak demand safeguard)`,
+      onModelAttempt: (round, maxRounds, modelName) => {
+        console.log(`[Round ${round + 1}/${maxRounds}] Sending conversion request using model: ${modelName}...`);
+      },
+      onModelError: (modelName, err) => {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.warn(`Model ${modelName} failed: ${errMsg}`);
+      },
+      generateForModel: (modelName, client) =>
+        client.models.generateContent({
+          model: modelName,
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: mimeType,
+                    data: cleanBase64,
                   },
-                  {
-                    text: userPrompt,
-                  },
-                ],
-              },
-            ],
-            config: {
-              systemInstruction: systemPrompt,
-              ...buildSafeThinkingConfig(modelName),
-              maxOutputTokens: 32768,
+                },
+                {
+                  text: userPrompt,
+                },
+              ],
             },
-          });
+          ],
+          config: {
+            systemInstruction: systemPrompt,
+            ...buildSafeThinkingConfig(modelName),
+            maxOutputTokens: 32768,
+          },
+        }),
+    });
 
-          try {
-            response = await Promise.race([modelCallPromise, timeoutPromise]);
-          } finally {
-            clearTimeout(timeoutHandle);
-          }
-
-          if (response && response.text) {
-            sharedModelPool.recordSuccess(modelName);
-            break;
-          }
-        } catch (err: any) {
-          const errMsg = err?.message || String(err);
-          console.warn(`Model ${modelName} failed: ${errMsg}`);
-          lastError = err;
-          sharedModelPool.classifyAndRecordError(modelName, err);
-
-          // Gentle pause between models in the same round
-          await new Promise((r) => setTimeout(r, 400));
-        }
-      }
+    if (outcome.kind === "rate_limit_delegated") {
+      return res.status(outcome.status).json(outcome.body);
+    }
+    if (outcome.kind === "failed") {
+      throw outcome.lastError || new Error("The AI conversion service experienced temporary peak demand. Please retry in a few seconds.");
     }
 
-    if (!response || !response.text) {
-      throw lastError || new Error("The AI conversion service experienced temporary peak demand. Please retry in a few seconds.");
-    }
-
-    const rawText = (response.text || "").trim();
+    const rawText = outcome.responseText.trim();
     let markdownContent = rawText;
 
     // In case the model wrapped in ```markdown ... ```
@@ -1027,63 +474,8 @@ OUTPUT DIRECTLY AS PRISTINE MARKDOWN ONLY (Do not wrap in JSON).`;
   } catch (error: any) {
     const rawError = error?.message || String(error);
     console.error("PDF Conversion Error:", rawError);
-    let userFriendlyError = rawError;
-    let extractedRetrySec = 15;
-    try {
-      const match = rawError.match(/retry in ([0-9.]+)s/i) || rawError.match(/retryDelay"?:\s*"(\d+)s"/i);
-      if (match) extractedRetrySec = Math.ceil(parseFloat(match[1]));
-    } catch {}
-
-    const isDailyQuotaExhausted =
-      rawError.includes("GenerateRequestsPerDay") ||
-      (rawError.includes("free_tier_requests") && (rawError.includes("limit: 500") || extractedRetrySec > 300));
-
-    const isRateLimit =
-      rawError.includes("429") ||
-      rawError.includes("RESOURCE_EXHAUSTED") ||
-      rawError.includes("Quota exceeded") ||
-      rawError.toLowerCase().includes("rate limit") ||
-      rawError.toLowerCase().includes("quota");
-
-    const isUnavailable =
-      rawError.includes("503") ||
-      rawError.toLowerCase().includes("high demand") ||
-      rawError.toLowerCase().includes("peak demand") ||
-      rawError.includes("UNAVAILABLE") ||
-      rawError.toLowerCase().includes("overloaded") ||
-      rawError.toLowerCase().includes("temporary");
-
-    if (isUnavailable) {
-      userFriendlyError = "تشهد خدمة المعالجة ضغطاً مؤقتاً. الحفاظ على تقدمك وإعادة المحاولة تلقائياً...";
-      return res.status(503).json({
-        success: false,
-        error: userFriendlyError,
-        isRateLimit: false,
-        isUnavailable: true,
-        isPeakDemand: true,
-        isDailyQuotaExhausted: false,
-        retryAfterSeconds: Math.max(6, Math.min(25, extractedRetrySec)),
-      });
-    } else if (isRateLimit) {
-      userFriendlyError = isDailyQuotaExhausted
-        ? "تم استهلاك الحصة المجانية اليومية للطلبات البصرية. يمكنك إكمال الصفحات الرقمية فوراً أو المتابعة تلقائياً بعد انتهاء التهدئة."
-        : "تم الوصول إلى الحد المؤقت للطلبات في الدقيقة (Rate limit). جاري الانتظار والاستئناف تلقائياً...";
-      return res.status(429).json({
-        success: false,
-        error: userFriendlyError,
-        isRateLimit: true,
-        isUnavailable: false,
-        isPeakDemand: false,
-        isDailyQuotaExhausted,
-        retryAfterSeconds: isDailyQuotaExhausted ? 60 : Math.max(10, Math.min(65, extractedRetrySec + 2)),
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      error: userFriendlyError,
-      isRateLimit: false,
-    });
+    const mapped = classifyGeminiHttpError(error);
+    return res.status(mapped.status).json(mapped.body);
   }
 });
 
@@ -1122,20 +514,17 @@ app.post("/api/contextual-check", async (req, res) => {
 7. الحفاظ التام على جميع وسوم التنسيق الموضعية مثل الخطوط السفلية <u>...</u> (خاصة الكلمات المراد إعرابها في "أعرب ما تحته خط") والتظليل <mark>...</mark> والأسس <sup> و <sub> والشطب ~~...~~ وفراغات الإكمال ___ كما وردت حرفياً دون حذفها.
 8. أعد فقط النص المكتمل والمصحح بصيغة Markdown دون أي شرح أو مقدمات أو خاتمة.`;
 
-    const modelsToTry = getAvailableModels();
-    let resultText = "";
-    let lastErr = null;
-
-    for (const model of modelsToTry) {
-      try {
-        let timeoutHandle: any;
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          timeoutHandle = setTimeout(() => {
-            reject(new Error(`Contextual check model ${model} timed out after 25s`));
-          }, 25000);
-        });
-
-        const modelCallPromise = ai.models.generateContent({
+    const contextualOutcome = await executeWithModelPool({
+      ai,
+      maxRounds: 1,
+      timeoutMs: 25000,
+      buildTimeoutMessage: (model) => `Contextual check model ${model} timed out after 25s`,
+      onModelError: (model, err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`Contextual check failed on model ${model}:`, msg);
+      },
+      generateForModel: (model, client) =>
+        client.models.generateContent({
           model,
           contents: `قم بالفحص والتدقيق السياقي الفوري لهذا المحتوى الأزهري، واضبط الآيات والأحاديث والجداول بالمسطرة وفق المراجع المعتمدة:\n\n${markdown.slice(0, 32000)}`,
           config: {
@@ -1143,28 +532,13 @@ app.post("/api/contextual-check", async (req, res) => {
             ...buildSafeThinkingConfig(model),
             maxOutputTokens: 8192,
           },
-        });
+        }),
+    });
 
-        let response: any;
-        try {
-          response = await Promise.race([modelCallPromise, timeoutPromise]);
-        } finally {
-          clearTimeout(timeoutHandle);
-        }
-
-        resultText = response.text || "";
-        if (resultText && resultText.trim().length > 0) {
-          sharedModelPool.recordSuccess(model);
-          break;
-        }
-      } catch (err: any) {
-        lastErr = err;
-        sharedModelPool.classifyAndRecordError(model, err);
-        console.warn(`Contextual check failed on model ${model}:`, err.message || err);
-      }
-    }
+    const resultText = contextualOutcome.kind === "success" ? contextualOutcome.responseText : "";
 
     if (!resultText) {
+      const lastErr = contextualOutcome.kind === "failed" ? (contextualOutcome.lastError as any) : null;
       return res.json({
         success: true,
         data: {
@@ -1274,19 +648,18 @@ app.post("/api/grammar-syntax-check", async (req, res) => {
   "completedMarkdown": "النص الكامل بعد إصلاح وتكملة الجمل المبتورة"
 }`;
 
-    const modelsToTry = getAvailableModels();
     let analysisResult: any = null;
-
-    for (const model of modelsToTry) {
-      try {
-        let timeoutHandle: any;
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          timeoutHandle = setTimeout(() => {
-            reject(new Error(`Grammar syntax check model ${model} timed out after 20s`));
-          }, 20000);
-        });
-
-        const modelCallPromise = ai.models.generateContent({
+    await executeWithModelPool({
+      ai,
+      maxRounds: 1,
+      timeoutMs: 20000,
+      buildTimeoutMessage: (model) => `Grammar syntax check model ${model} timed out after 20s`,
+      onModelError: (model, err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`Grammar analyzer failed on model ${model}:`, msg);
+      },
+      generateForModel: async (model, client) => {
+        const resGen = await client.models.generateContent({
           model,
           contents: `حلل هذا النص نحوياً وتركيبياً واكشف الجمل المفتوحة والبتر المفاجئ وأكملها وفق السياق:\n\n${markdown.slice(-15000)}`,
           config: {
@@ -1295,24 +668,12 @@ app.post("/api/grammar-syntax-check", async (req, res) => {
             responseMimeType: "application/json",
           },
         });
-
-        let response: any;
-        try {
-          response = await Promise.race([modelCallPromise, timeoutPromise]);
-        } finally {
-          clearTimeout(timeoutHandle);
+        if (resGen.text) {
+          analysisResult = JSON.parse(resGen.text);
         }
-
-        if (response.text) {
-          analysisResult = JSON.parse(response.text);
-          sharedModelPool.recordSuccess(model);
-          break;
-        }
-      } catch (err: any) {
-        sharedModelPool.classifyAndRecordError(model, err);
-        console.warn(`Grammar analyzer failed on model ${model}:`, err.message || err);
-      }
-    }
+        return resGen;
+      },
+    });
 
     if (!analysisResult) {
       return res.json({
@@ -1345,104 +706,23 @@ app.post("/api/grammar-syntax-check", async (req, res) => {
   }
 });
 
-// Dedicated binary Word (.docx) export fallback endpoint (guarantees .docx download, never .md)
-app.post("/api/export-docx", async (req, res) => {
-  try {
-    const {
-      title,
-      markdown,
-      isRtl,
-      author,
-      typography,
-      fontProfile,
-      arabicFont,
-      englishFont,
-      arabicSizePt,
-      englishSizePt,
-    } = req.body || {};
-
-    if (typeof markdown !== "string") {
-      return res.status(400).json({ success: false, error: "محتوى المستند مطلوب لتصدير Word." });
-    }
-
-    const polished = polishBilingualBoundariesCore(markdown);
-    const uint8 = await buildDocxBinary(
-      {
-        title: typeof title === "string" ? title : "مستند محول",
-        markdown: polished,
-        isRtl: typeof isRtl === "boolean" ? isRtl : undefined,
-        author: typeof author === "string" ? author : undefined,
-        typography,
-        fontProfile,
-        arabicFont,
-        englishFont,
-        arabicSizePt,
-        englishSizePt,
-      },
-      { docx, JSZip }
-    );
-
-    const safeBase = (typeof title === "string" && title.trim() ? title.trim() : "document")
-      .replace(/\.[^/.]+$/, "")
-      .replace(/[^\w\u0600-\u06FF\s.-]/g, "_");
-    res.setHeader("Content-Type", DOCX_MIME);
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="document.docx"; filename*=UTF-8''${encodeURIComponent(safeBase + ".docx")}`
-    );
-    return res.send(Buffer.from(uint8));
-  } catch (err: any) {
-    console.error("[Export DOCX] Error:", err);
-    return res.status(500).json({
-      success: false,
-      error: err?.message || "تعذر إنشاء ملف Word (.docx).",
-    });
-  }
-});
+// Dedicated binary Word (.docx) export route
+registerExportRoutes(app);
 
 // Register Live Model Discovery & Rotation Status routes (/api/models/*)
 registerModelPoolRoutes(app, getGeminiClient);
 
 // Register Persistent Background Conversion Jobs API (/api/jobs/*)
-registerBackgroundJobRoutes(app, PROJECT_ROOT, getGeminiClient);
+const jobManager = registerBackgroundJobRoutes(app, PROJECT_ROOT, getGeminiClient);
 
 // Register Smart Compilation Studio routes (/api/compiler/*)
 registerSmartCompilerRoutes(app, getGeminiClient);
 
-// JSON / Body-parser error handler
-app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
-  if (err) {
-    console.error("Express middleware error:", err);
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
-    if (err.type === "entity.too.large" || err.status === 413) {
-      return res.status(413).json({ success: false, error: "حجم الحزمة كبير جداً.", isPayloadTooLarge: true });
-    }
-    return res.status(err.status || 400).json({ success: false, error: err.message || "طلب غير صالح" });
-  }
-  next();
-});
-
 // 404 handler for all /api/* routes (ensures API callers never receive Vite SPA HTML)
-app.all("/api/*", (req, res) => {
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.status(404).json({
-    success: false,
-    error: `المسار البرمجي غير موجود: ${req.method} ${req.path}`,
-    code: "NOT_FOUND",
-  });
-});
+app.all("/api/*", apiNotFoundHandler);
 
 // Global Express error handler for all /api routes
-app.use("/api", (err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error("Unhandled API error:", err);
-  const status = err.status || err.statusCode || 500;
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.status(status).json({
-    success: false,
-    error: err.message || "حدث خطأ غير متوقع أثناء معالجة الطلب.",
-    code: err.code || "INTERNAL_ERROR",
-  });
-});
+app.use("/api", apiUnhandledErrorHandler);
 
 async function startServer() {
   const httpServer = http.createServer(app);
@@ -1490,6 +770,23 @@ async function startServer() {
     });
   }
 
+  let warmupTimer: ReturnType<typeof setTimeout> | undefined;
+  let refreshInterval: ReturnType<typeof setInterval> | undefined;
+
+  const gracefulShutdown = (signal: string) => {
+    console.log(`[Server] Received ${signal}. Shutting down cleanly...`);
+    jobManager.shutdown();
+    if (warmupTimer) clearTimeout(warmupTimer);
+    if (refreshInterval) clearInterval(refreshInterval);
+    httpServer.close(() => {
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(0), 5000).unref();
+  };
+
+  process.once("SIGINT", () => gracefulShutdown("SIGINT"));
+  process.once("SIGTERM", () => gracefulShutdown("SIGTERM"));
+
   httpServer.on("error", (err: NodeJS.ErrnoException) => {
     console.error("HTTP server startup error:", err);
     process.exitCode = 1;
@@ -1498,12 +795,13 @@ async function startServer() {
   httpServer.listen(PORT, HOST, () => {
     console.log(`PDF Converter server running on http://${HOST}:${PORT}`);
     // Non-blocking warm-up discovery of live free Gemini models + periodic 15-min refresh
-    setTimeout(() => {
+    warmupTimer = setTimeout(() => {
       sharedModelPool.discoverAndVerify(getGeminiClient(), { probeActive: true }).catch(() => {});
     }, 1500);
-    setInterval(() => {
+    refreshInterval = setInterval(() => {
       sharedModelPool.discoverAndVerify(getGeminiClient(), { probeActive: false }).catch(() => {});
-    }, 15 * 60 * 1000).unref();
+    }, 15 * 60 * 1000);
+    refreshInterval.unref();
   });
 }
 

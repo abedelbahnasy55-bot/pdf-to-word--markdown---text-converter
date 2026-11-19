@@ -125,8 +125,15 @@ export class TeamAuthManager {
 
   private saveConfig(): void {
     const tmp = `${this.configPath}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(this.config, null, 2), "utf-8");
-    fs.renameSync(tmp, this.configPath);
+    try {
+      fs.writeFileSync(tmp, JSON.stringify(this.config, null, 2), "utf-8");
+      fs.renameSync(tmp, this.configPath);
+    } catch (err) {
+      try {
+        fs.rmSync(tmp, { force: true });
+      } catch {}
+      throw err;
+    }
   }
 
   private getEnvPasscode(): string {
@@ -292,6 +299,13 @@ export class TeamAuthManager {
   public recordFailedAttempt(ip: string): void {
     const key = ip || "unknown";
     const now = Date.now();
+    if (this.attemptsByIp.size > 500) {
+      for (const [k, bucket] of this.attemptsByIp) {
+        if (bucket.lockedUntil <= now && now - bucket.firstAttemptAt > 10 * 60 * 1000) {
+          this.attemptsByIp.delete(k);
+        }
+      }
+    }
     const existing = this.attemptsByIp.get(key);
     if (!existing || now - existing.firstAttemptAt > 10 * 60 * 1000) {
       this.attemptsByIp.set(key, { count: 1, lockedUntil: 0, firstAttemptAt: now });
@@ -380,7 +394,6 @@ function clearSessionCookie(res: Response, req: Request): void {
 const PUBLIC_AUTH_EXEMPT_PATHS = new Set([
   "/api/health",
   "/api/ping",
-  "/api/info",
   "/api/auth/status",
   "/api/auth/verify",
   "/api/auth/logout",

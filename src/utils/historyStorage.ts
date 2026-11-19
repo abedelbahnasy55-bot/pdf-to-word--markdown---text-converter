@@ -7,9 +7,13 @@ const BATCH_STORE_NAME = 'batch_sessions';
 const LAST_ACTIVE_KEY = 'pdf_converter_last_active_id';
 const LOCAL_STORAGE_KEY = 'pdf_converter_history_backup';
 
+let cachedDbPromise: Promise<IDBDatabase> | null = null;
+
 function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  if (cachedDbPromise) return cachedDbPromise;
+  cachedDbPromise = new Promise<IDBDatabase>((resolve, reject) => {
     if (!window.indexedDB) {
+      cachedDbPromise = null;
       reject(new Error('IndexedDB not supported'));
       return;
     }
@@ -24,9 +28,26 @@ function openDB(): Promise<IDBDatabase> {
         db.createObjectStore(BATCH_STORE_NAME, { keyPath: 'sessionId' });
       }
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => {
+        db.close();
+        cachedDbPromise = null;
+      };
+      db.onclose = () => {
+        cachedDbPromise = null;
+      };
+      db.onerror = () => {
+        cachedDbPromise = null;
+      };
+      resolve(db);
+    };
+    request.onerror = () => {
+      cachedDbPromise = null;
+      reject(request.error);
+    };
   });
+  return cachedDbPromise;
 }
 
 export async function saveToHistory(
@@ -52,9 +73,10 @@ export async function saveToHistory(
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
-      const req = store.put(item);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
+      store.put(item);
     });
   } catch (err) {
     console.warn('IndexedDB write failed, falling back to localStorage', err);
@@ -123,9 +145,10 @@ export async function deleteFromHistory(id: string): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
-      const req = store.delete(id);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
+      store.delete(id);
     });
   } catch (err) {
     console.warn('IndexedDB delete failed', err);
@@ -149,9 +172,10 @@ export async function clearHistory(): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
-      const req = store.clear();
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
+      store.clear();
     });
   } catch (err) {
     console.warn('IndexedDB clear failed', err);
@@ -168,18 +192,19 @@ export async function clearHistory(): Promise<void> {
 export async function markHistoryDownloaded(id: string): Promise<void> {
   try {
     const db = await openDB();
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
       const getReq = store.get(id);
       getReq.onsuccess = () => {
         if (getReq.result) {
           const updated = { ...getReq.result, isDownloaded: true };
           store.put(updated);
         }
-        resolve();
       };
-      getReq.onerror = () => resolve();
     });
   } catch {
     // fallback
@@ -335,9 +360,10 @@ export async function saveBatchSession(
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(BATCH_STORE_NAME, 'readwrite');
       const store = tx.objectStore(BATCH_STORE_NAME);
-      const req = store.put(session);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
+      store.put(session);
     });
   } catch (err) {
     console.warn('Failed to save batch session to IndexedDB', err);
@@ -376,12 +402,13 @@ export async function clearBatchSession(): Promise<void> {
   try {
     const db = await openDB();
     if (!db.objectStoreNames.contains(BATCH_STORE_NAME)) return;
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(BATCH_STORE_NAME, 'readwrite');
       const store = tx.objectStore(BATCH_STORE_NAME);
-      const req = store.delete('current_active_batch');
-      req.onsuccess = () => resolve();
-      req.onerror = () => resolve();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
+      store.delete('current_active_batch');
     });
   } catch {}
 }
@@ -393,9 +420,12 @@ export async function markBatchItemDownloadedInSession(itemId: string): Promise<
   try {
     const db = await openDB();
     if (!db.objectStoreNames.contains(BATCH_STORE_NAME)) return;
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(BATCH_STORE_NAME, 'readwrite');
       const store = tx.objectStore(BATCH_STORE_NAME);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
       const req = store.get('current_active_batch');
       req.onsuccess = () => {
         if (req.result && Array.isArray(req.result.items)) {
@@ -405,9 +435,7 @@ export async function markBatchItemDownloadedInSession(itemId: string): Promise<
           );
           store.put(session);
         }
-        resolve();
       };
-      req.onerror = () => resolve();
     });
   } catch {}
 }

@@ -1,13 +1,5 @@
 import { PDFDocument } from 'pdf-lib';
 
-export interface PDFChunk {
-  chunkIndex: number;
-  totalChunks: number;
-  startPage: number;
-  endPage: number;
-  base64: string;
-}
-
 export interface PDFPageRange {
   startPage: number;
   endPage: number;
@@ -89,10 +81,6 @@ export interface PDFChunkDescriptor {
   totalChunks: number;
   startPage: number;
   endPage: number;
-}
-
-export interface PDFChunk extends PDFChunkDescriptor {
-  base64: string;
 }
 
 export interface PDFChunkPlanner {
@@ -205,37 +193,5 @@ export async function planPDFChunks(
     getChunkBase64,
     getCustomRangeBase64,
     dispose,
-  };
-}
-
-/**
- * Splits a PDF ArrayBuffer into multiple chunks of at most `maxPagesPerChunk` pages.
- * Supports optional `pageRange` for processing specific chapters or subsets of massive books.
- * Uses lazy planner to avoid holding all base64 representations in RAM simultaneously.
- */
-export async function splitPDFIntoChunks(
-  pdfBytes: ArrayBuffer,
-  maxPagesPerChunk?: number,
-  pageRange?: PDFPageRange
-): Promise<{ totalPages: number; chunks: PDFChunk[]; effectiveStartPage: number; effectiveEndPage: number }> {
-  const planner = await planPDFChunks(pdfBytes, maxPagesPerChunk, pageRange);
-  const chunks: PDFChunk[] = [];
-
-  for (let i = 0; i < planner.chunkDescriptors.length; i++) {
-    const desc = planner.chunkDescriptors[i];
-    const base64 = await planner.getChunkBase64(i);
-    chunks.push({
-      ...desc,
-      base64,
-    });
-  }
-
-  planner.dispose();
-
-  return {
-    totalPages: planner.totalPages,
-    chunks,
-    effectiveStartPage: planner.effectiveStartPage,
-    effectiveEndPage: planner.effectiveEndPage,
   };
 }

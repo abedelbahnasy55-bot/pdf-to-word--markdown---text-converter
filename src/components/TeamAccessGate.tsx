@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, Eye, EyeOff, ArrowLeft, Sun, Moon } from 'lucide-react';
-import { apiFetch, setStoredTeamToken } from '../utils/apiClient';
+import { setStoredTeamToken } from '../utils/apiClient';
+import { verifyTeamPasscode } from '../api/teamAuthApi';
 import type { ThemeMode } from '../utils/theme';
 
 interface TeamAccessGateProps {
@@ -31,13 +32,8 @@ export const TeamAccessGate: React.FC<TeamAccessGateProps> = ({
     setIsSubmitting(true);
     setErrorMsg(null);
     try {
-      const res = await apiFetch('/api/auth/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: trimmed, rememberDevice }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.success) {
+      const { ok, data } = await verifyTeamPasscode(trimmed, rememberDevice);
+      if (!ok || !data?.success) {
         setErrorMsg(data?.error || 'رمز الدخول غير صحيح.');
         return;
       }

@@ -5,7 +5,13 @@ import {
 } from '../types';
 import { convertDocumentFile, runMicroscopicFinalizationPipeline } from './documentConverter';
 import { isRightToLeftText } from '../../shared/arabicText';
-import { apiFetch } from './apiClient';
+import {
+  postCompilerPlanRequest,
+  postCompilerExtractRequest,
+  postCompilerRefineRequest,
+  postCompilerAskRequest,
+  postCompilerSemanticSearchRequest,
+} from '../api/compilerApi';
 import {
   assembleCompilationDocument,
   buildDeterministicPlan,
@@ -153,26 +159,6 @@ export function mergeAvailableSources(
   return combined;
 }
 
-async function postJsonWithTimeout<T>(url: string, body: unknown, timeoutMs = 45000): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await apiFetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    const json = await response.json();
-    if (!response.ok || !json?.success) {
-      throw new Error(json?.error || `HTTP ${response.status}`);
-    }
-    return json.data as T;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 export async function runSmartCompilationPipeline(params: {
   instruction: string;
   repetitionPolicy: RepetitionPolicy;
@@ -299,15 +285,11 @@ export async function runSmartCompilationPipeline(params: {
 
   let plan: CompilationPlan;
   try {
-    plan = await postJsonWithTimeout<CompilationPlan>(
-      '/api/compiler/plan',
-      {
-        instruction,
-        repetitionPolicy,
-        sources: catalog,
-      },
-      30000
-    );
+    plan = await postCompilerPlanRequest<CompilationPlan>({
+      instruction,
+      repetitionPolicy,
+      sources: catalog,
+    });
   } catch {
     plan = buildDeterministicPlan(instruction, repetitionPolicy, catalog);
   }
@@ -365,19 +347,15 @@ export async function runSmartCompilationPipeline(params: {
     });
 
     try {
-      const block = await postJsonWithTimeout<ExtractedSourceBlock>(
-        '/api/compiler/extract',
-        {
-          sourceId: job.source.id,
-          sourceTitle: job.source.title,
-          chunkIndex: job.chunk.chunkIndex,
-          contextHeader: job.chunk.contextHeader,
-          chunkMarkdown: job.chunk.markdown,
-          directive: job.directive,
-          instruction,
-        },
-        40000
-      );
+      const block = await postCompilerExtractRequest<ExtractedSourceBlock>({
+        sourceId: job.source.id,
+        sourceTitle: job.source.title,
+        chunkIndex: job.chunk.chunkIndex,
+        contextHeader: job.chunk.contextHeader,
+        chunkMarkdown: job.chunk.markdown,
+        directive: job.directive,
+        instruction,
+      });
       if (block.markdown && block.markdown.trim().length > 0) {
         extractedBlocks.push(block);
       }
@@ -491,19 +469,15 @@ export async function refineCompilationDocument(params: {
   const { currentResult, editRequest, referenceSourceText } = params;
   const currentMarkdown = currentResult.markdown || currentResult.plainText || '';
 
-  const refineResponse = await postJsonWithTimeout<{
+  const refineResponse = await postCompilerRefineRequest<{
     updatedMarkdown: string;
     assistantReply: string;
     mode: string;
-  }>(
-    '/api/compiler/refine',
-    {
-      currentMarkdown,
-      editRequest,
-      compilationTitle: currentResult.title,
-    },
-    60000
-  );
+  }>({
+    currentMarkdown,
+    editRequest,
+    compilationTitle: currentResult.title,
+  });
 
   // Re-run Microscopic + Cleaner + Strict QA on every interactive refinement!
   const finalized = runMicroscopicFinalizationPipeline(
@@ -607,16 +581,10 @@ export async function askAssistantAboutSources(params: {
     };
   });
 
-  const data = await postJsonWithTimeout<{ answer: string; modelUsed: string }>(
-    '/api/compiler/ask',
-    {
-      question,
-      sources: payloadSources,
-    },
-    30000
-  );
-
-  return data;
+  return await postCompilerAskRequest<{ answer: string; modelUsed: string }>({
+    question,
+    sources: payloadSources,
+  });
 }
 
 export async function runSemanticSearchAcrossSources(params: {
@@ -737,14 +705,10 @@ export async function runSemanticSearchAcrossSources(params: {
     });
   }
 
-  return await postJsonWithTimeout<SemanticSearchResponse>(
-    '/api/compiler/semantic-search',
-    {
-      query: cleanQuery,
-      passages: boundedPassages,
-      topK,
-      minScore: 0.18,
-    },
-    35000
-  );
+  return await postCompilerSemanticSearchRequest<SemanticSearchResponse>({
+    query: cleanQuery,
+    passages: boundedPassages,
+    topK,
+    minScore: 0.18,
+  });
 }

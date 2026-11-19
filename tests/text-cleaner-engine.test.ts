@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TextCleanerEngine, cleanTextWithEngine, DEFAULT_CLEANER_RULES } from '../src/utils/textCleanerEngine';
+import { TextCleanerEngine, cleanTextWithEngine, DEFAULT_CLEANER_RULES } from '../shared/textCleanerEngine';
 
 describe('TextCleanerEngine Unit Tests', () => {
   it('correctly repairs glued table headers with "ا" column separators', () => {

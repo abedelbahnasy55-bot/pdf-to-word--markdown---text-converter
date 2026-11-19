@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { TextProcessor } from '../src/utils/textProcessor';
-import { DEFAULT_CLEANER_RULES } from '../src/utils/textCleanerEngine';
+import { TextProcessor } from '../shared/textProcessor';
+import { DEFAULT_CLEANER_RULES } from '../shared/textCleanerEngine';
 import {
   generateAutoHealedMarkdown,
   runMicroscopicAudit,

@@ -24,6 +24,7 @@ import {
 } from "../shared/arabicPipelineCore.js";
 import { buildDocxBinary, DOCX_MIME, type FontProfileId } from "../shared/typographyDocxCore.js";
 import { sharedModelPool, buildSafeThinkingConfig } from "./modelPool.js";
+import { executeWithModelPool } from "./clients/geminiClient.js";
 
 /**
  * 100% Free-tier Active Gemini OCR Model Pool.
@@ -154,32 +155,62 @@ export function batchScannedPageNumbers(pageNumbers: number[], batchSize: number
 
 export class BackgroundJobManager {
   private jobsRootDir: string;
+  private readonly resolvedJobsRoot: string;
   private getGeminiClient: () => GoogleGenAI;
   private activeJobId: string | null = null;
   private pausedJobIds = new Set<string>();
   private workerScheduled = false;
+  private stopped = false;
 
   constructor(projectRoot: string, getGeminiClient: () => GoogleGenAI) {
     this.jobsRootDir = path.join(projectRoot, ".jobs");
+    this.resolvedJobsRoot = path.resolve(this.jobsRootDir);
     this.getGeminiClient = getGeminiClient;
     if (!fs.existsSync(this.jobsRootDir)) {
       fs.mkdirSync(this.jobsRootDir, { recursive: true });
     }
   }
 
+  public shutdown(): void {
+    this.stopped = true;
+  }
+
+  private resolveSafeJobDir(id: string): string | null {
+    if (typeof id !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{1,119}$/.test(id)) {
+      return null;
+    }
+    const resolved = path.resolve(this.resolvedJobsRoot, id);
+    if (!resolved.startsWith(this.resolvedJobsRoot + path.sep)) {
+      return null;
+    }
+    return resolved;
+  }
+
   private jobDir(id: string): string {
-    const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "");
-    return path.join(this.jobsRootDir, safeId);
+    const safeDir = this.resolveSafeJobDir(id);
+    if (!safeDir) {
+      throw new Error("معرّف المهمة غير صالح.");
+    }
+    return safeDir;
   }
 
   private atomicWriteJson(filePath: string, data: unknown) {
     const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
-    fs.renameSync(tmpPath, filePath);
+    try {
+      fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+      fs.renameSync(tmpPath, filePath);
+    } catch (err) {
+      try {
+        fs.rmSync(tmpPath, { force: true });
+      } catch {}
+      throw err;
+    }
   }
 
   private readMeta(id: string): BackgroundJobMeta | null {
-    const metaPath = path.join(this.jobDir(id), "meta.json");
+    const dir = this.resolveSafeJobDir(id);
+    if (!dir) return null;
+    const metaPath = path.join(dir, "meta.json");
     if (!fs.existsSync(metaPath)) return null;
     try {
       return JSON.parse(fs.readFileSync(metaPath, "utf-8")) as BackgroundJobMeta;
@@ -208,7 +239,9 @@ export class BackgroundJobManager {
   }
 
   public getJobResult(id: string): BackgroundJobResult | null {
-    const p = path.join(this.jobDir(id), "result.json");
+    const dir = this.resolveSafeJobDir(id);
+    if (!dir) return null;
+    const p = path.join(dir, "result.json");
     if (!fs.existsSync(p)) return null;
     try {
       return JSON.parse(fs.readFileSync(p, "utf-8")) as BackgroundJobResult;
@@ -340,25 +373,28 @@ export class BackgroundJobManager {
   }
 
   public deleteJob(id: string): boolean {
+    const dir = this.resolveSafeJobDir(id);
+    if (!dir) return false;
     this.pausedJobIds.add(id);
-    const dir = this.jobDir(id);
     if (!fs.existsSync(dir)) return false;
     fs.rmSync(dir, { recursive: true, force: true });
     return true;
   }
 
   private scheduleWorker() {
-    if (this.workerScheduled || this.activeJobId) return;
+    if (this.stopped || this.workerScheduled || this.activeJobId) return;
     this.workerScheduled = true;
     setImmediate(() => {
       this.workerScheduled = false;
-      void this.runWorkerLoop();
+      if (!this.stopped) {
+        void this.runWorkerLoop();
+      }
     });
   }
 
   private async runWorkerLoop() {
-    if (this.activeJobId) return;
-    while (true) {
+    if (this.activeJobId || this.stopped) return;
+    while (!this.stopped) {
       const nextJob = this.listJobs()
         .filter((j) => j.status === "queued" && !this.pausedJobIds.has(j.id))
         .sort((a, b) => a.createdAt - b.createdAt)[0];
@@ -422,73 +458,60 @@ Rules:
       userPrompt += `\n\nVerified underlined targets detected in vector layer (must be wrapped in <u>...</u>):\n${hintLines.join("\n")}`;
     }
 
-    const MAX_ROUNDS = 4;
-    let lastError: unknown = null;
-
-    for (let round = 0; round < MAX_ROUNDS; round++) {
-      const waitMs = sharedModelPool.getEarliestReadyWaitMs();
-      if (waitMs > 0) {
-        await new Promise((r) => setTimeout(r, Math.min(65000, waitMs + 1000)));
-      }
-
-      const candidateModels = sharedModelPool.getCandidateModels();
-
-      for (const modelName of candidateModels) {
-        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-        try {
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            timeoutHandle = setTimeout(
-              () => reject(new Error(`Timeout after 45s on ${modelName}`)),
-              45000
-            );
-          });
-
-          const callPromise = ai.models.generateContent({
-            model: modelName,
-            contents: [
-              {
-                role: "user",
-                parts: [
-                  {
-                    inlineData: {
-                      mimeType,
-                      data: inlineBase64,
-                    },
-                  },
-                  { text: userPrompt },
-                ],
-              },
-            ],
-            config: {
-              systemInstruction,
-              ...buildSafeThinkingConfig(modelName),
-              maxOutputTokens: 32768,
-            },
-          });
-
-          const response = await Promise.race([callPromise, timeoutPromise]);
-          const text = (response?.text || "").trim();
-          if (text.length > 0) {
-            sharedModelPool.recordSuccess(modelName);
-            return text
-              .replace(/^```(?:markdown)?\s*/i, "")
-              .replace(/```\s*$/i, "")
-              .trim();
-          }
-        } catch (err: any) {
-          lastError = err;
-          sharedModelPool.classifyAndRecordError(modelName, err);
-        } finally {
-          if (timeoutHandle) clearTimeout(timeoutHandle);
-        }
-      }
-
-      if (round < MAX_ROUNDS - 1) {
-        await new Promise((r) => setTimeout(r, 1500 + round * 1500));
-      }
+    const waitMs = sharedModelPool.getEarliestReadyWaitMs();
+    if (waitMs > 0) {
+      await new Promise((r) => setTimeout(r, Math.min(65000, waitMs + 1000)));
     }
 
-    throw lastError instanceof Error ? lastError : new Error("تعذر تفريغ الدفعة مؤقتاً بسبب ضغط الخدمة.");
+    const outcome = await executeWithModelPool({
+      ai,
+      maxRounds: 4,
+      timeoutMs: 45000,
+      respectCooldownGate: false,
+      pauseBetweenRounds: true,
+      pauseBetweenModelsMs: 0,
+      buildTimeoutMessage: (modelName) => `Timeout after 45s on ${modelName}`,
+      generateForModel: async (modelName, client) => {
+        const response = await client.models.generateContent({
+          model: modelName,
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  inlineData: {
+                    mimeType,
+                    data: inlineBase64,
+                  },
+                },
+                { text: userPrompt },
+              ],
+            },
+          ],
+          config: {
+            systemInstruction,
+            ...buildSafeThinkingConfig(modelName),
+            maxOutputTokens: 32768,
+          },
+        });
+        if (!(response?.text || "").trim()) {
+          throw new Error(`Empty response from ${modelName}`);
+        }
+        return response;
+      },
+    });
+
+    if (outcome.kind === "success") {
+      return outcome.responseText
+        .replace(/^```(?:markdown)?\s*/i, "")
+        .replace(/```\s*$/i, "")
+        .trim();
+    }
+
+    const lastError = outcome.kind === "failed" ? outcome.lastError : null;
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("تعذر تفريغ الدفعة مؤقتاً بسبب ضغط الخدمة.");
   }
 
   private async executeJob(id: string): Promise<void> {
@@ -554,14 +577,17 @@ Rules:
       let rawPageTexts: string[] = [];
       const parser = new PDFParse({ data: new Uint8Array(fileBuffer) });
       try {
+        let underlineTimer: ReturnType<typeof setTimeout> | undefined;
         const [parsed, underlineRes] = await Promise.all([
           parser.getText({ lineThreshold: 4 }),
           Promise.race([
             detectPdfUnderlines(fileBuffer).catch(() => ({ pages: [], totalUnderlines: 0 })),
-            new Promise<{ pages: PageDetectedUnderlines[]; totalUnderlines: number }>((resolve) =>
-              setTimeout(() => resolve({ pages: [], totalUnderlines: 0 }), 6000)
-            ),
-          ]),
+            new Promise<{ pages: PageDetectedUnderlines[]; totalUnderlines: number }>((resolve) => {
+              underlineTimer = setTimeout(() => resolve({ pages: [], totalUnderlines: 0 }), 6000);
+            }),
+          ]).finally(() => {
+            if (underlineTimer) clearTimeout(underlineTimer);
+          }),
         ]);
         detectedUnderlines = underlineRes.pages || [];
         rawPageTexts =

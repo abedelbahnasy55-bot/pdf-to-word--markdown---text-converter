@@ -12,7 +12,7 @@ import {
   type ScriptSegment,
 } from '../../shared/typographyDocxCore';
 import { polishBilingualBoundariesCore } from '../../shared/arabicPipelineCore';
-import { apiFetch } from './apiClient';
+import { exportDocxRequest } from '../api/conversionApi';
 
 export type { TypographyOptions, FontProfileId, ScriptSegment };
 export { TYPOGRAPHY_PROFILES, segmentByScript, resolveParagraphDirection };
@@ -49,23 +49,7 @@ export async function generateDocxBlob(options: DocxExportOptions): Promise<Blob
     return new Blob([buffer], { type: DOCX_MIME });
   } catch (clientErr) {
     console.warn('[docxExporter] Client-side DOCX build failed, routing to server /api/export-docx:', clientErr);
-    const res = await apiFetch('/api/export-docx', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      let msg = 'تعذر إنشاء ملف Word (.docx) على الخادم.';
-      try {
-        const errJson = await res.json();
-        if (errJson?.error) msg = errJson.error;
-      } catch {}
-      throw new Error(msg);
-    }
-    const arrayBuf = await res.arrayBuffer();
-    if (!arrayBuf || arrayBuf.byteLength < 64) {
-      throw new Error('ملف Word المُنشأ فارغ أو غير صالح.');
-    }
+    const arrayBuf = await exportDocxRequest(payload);
     return new Blob([arrayBuf], { type: DOCX_MIME });
   }
 }
