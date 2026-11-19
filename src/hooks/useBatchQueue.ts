@@ -23,6 +23,8 @@ import {
   StableBatchEtaState,
   calculateStableBatchEta,
 } from '../utils/etaCalculator';
+import type { ClientPolicyState } from '../model/governance';
+import { reportClientTelemetry } from '../api/governanceApi';
 
 interface UseBatchQueueParams {
   refreshHistoryList: () => Promise<void>;
@@ -34,6 +36,8 @@ interface UseBatchQueueParams {
   ) => Promise<void>;
   notify: (msg: string, durationMs?: number) => void;
   onError: (msg: string | null) => void;
+  clientPolicy?: ClientPolicyState | null;
+  onConversionTelemetryUpdated?: () => void;
 }
 
 function playCompletionChime(): void {
@@ -65,6 +69,8 @@ export function useBatchQueue({
   submitFilesToServerBackgroundJobs,
   notify,
   onError,
+  clientPolicy,
+  onConversionTelemetryUpdated,
 }: UseBatchQueueParams) {
   const [batchQueue, setBatchQueue] = useState<BatchFileItem[] | null>(null);
   const [isBatchRunning, setIsBatchRunning] = useState<boolean>(false);
@@ -251,11 +257,23 @@ export function useBatchQueue({
         currentFile.type.includes('officedocument');
 
       const activeOpts = currentItem.options || CONVERSION_DEFAULTS;
+      const itemStartedAt = Date.now();
+      let telemetryEventId: string | undefined;
 
       try {
         if (!currentFile || currentFile.size === 0) {
           throw new Error('الملف غير متوفر في الذاكرة المؤقتة. اضغط على "إعادة رفع الملف" لاختياره وتحويله مباشرة.');
         }
+
+        const startReport = await reportClientTelemetry({
+          fileName: currentFile.name,
+          fileSize: currentFile.size,
+          mimeType: currentFile.type || '',
+          operation: isDocx ? 'docx-client-convert' : 'client-pipeline',
+          status: 'started',
+          startedAt: itemStartedAt,
+        });
+        telemetryEventId = startReport?.eventId;
 
         const res = await convertDocumentFile(
           currentFile,
@@ -284,6 +302,26 @@ export function useBatchQueue({
         await saveToHistory(res, currentFile.name, currentFile.size, res.totalPages || 1);
         await refreshHistoryList();
 
+        const wordsCount = (res.plainText || '').trim()
+          ? (res.plainText || '').trim().split(/\s+/).length
+          : 0;
+        await reportClientTelemetry({
+          eventId: telemetryEventId,
+          fileName: currentFile.name,
+          fileSize: currentFile.size,
+          mimeType: currentFile.type || '',
+          operation: isDocx ? 'docx-client-convert' : 'client-pipeline',
+          status: 'completed',
+          pagesCount: res.totalPages || 1,
+          wordsCount,
+          charsCount: (res.markdown || '').length,
+          extractionMethod: isDocx ? 'docx_reader' : 'client_hybrid',
+          durationMs: res.conversionDurationMs || Date.now() - itemStartedAt,
+          startedAt: itemStartedAt,
+          completedAt: Date.now(),
+        });
+        onConversionTelemetryUpdated?.();
+
         setBatchQueue((prev) =>
           prev
             ? prev.map((item) =>
@@ -305,6 +343,16 @@ export function useBatchQueue({
         });
       } catch (err: any) {
         if (batchAbortControllerRef.current?.signal.aborted) {
+          void reportClientTelemetry({
+            eventId: telemetryEventId,
+            fileName: currentFile.name,
+            fileSize: currentFile.size,
+            operation: isDocx ? 'docx-client-convert' : 'client-pipeline',
+            status: 'paused',
+            durationMs: Date.now() - itemStartedAt,
+            startedAt: itemStartedAt,
+            completedAt: Date.now(),
+          });
           setBatchQueue((prev) =>
             prev
               ? prev.map((item) =>
@@ -315,6 +363,34 @@ export function useBatchQueue({
           break;
         }
         console.error(`Batch item error on ${currentFile.name}:`, err);
+
+        const isBlocked = Boolean(err?.isBlocked);
+        if (isBlocked) {
+          const msg = err?.message || 'تم تقييد عملية التحويل من قِبل المشرف.';
+          await reportClientTelemetry({
+            eventId: telemetryEventId,
+            fileName: currentFile.name,
+            fileSize: currentFile.size,
+            operation: isDocx ? 'docx-client-convert' : 'client-pipeline',
+            status: 'blocked',
+            blockReason: msg,
+            durationMs: Date.now() - itemStartedAt,
+            startedAt: itemStartedAt,
+            completedAt: Date.now(),
+          });
+          onConversionTelemetryUpdated?.();
+          onError(msg);
+          setBatchQueue((prev) =>
+            prev
+              ? prev.map((item) =>
+                  item.id === currentItem.id
+                    ? { ...item, status: 'error', error: msg, lastUpdatedAt: Date.now() }
+                    : item
+                )
+              : null
+          );
+          continue;
+        }
 
         const currentRetries = currentItem.retryCount || 0;
         const maxRetries = 2;
@@ -349,11 +425,24 @@ export function useBatchQueue({
             });
           }
         } else {
+          const errText = err?.message || 'تعذر التحويل';
+          await reportClientTelemetry({
+            eventId: telemetryEventId,
+            fileName: currentFile.name,
+            fileSize: currentFile.size,
+            operation: isDocx ? 'docx-client-convert' : 'client-pipeline',
+            status: 'failed',
+            errorMessage: errText,
+            durationMs: Date.now() - itemStartedAt,
+            startedAt: itemStartedAt,
+            completedAt: Date.now(),
+          });
+          onConversionTelemetryUpdated?.();
           setBatchQueue((prev) =>
             prev
               ? prev.map((item) =>
                   item.id === currentItem.id
-                    ? { ...item, status: 'error', error: err?.message || 'تعذر التحويل', lastUpdatedAt: Date.now() }
+                    ? { ...item, status: 'error', error: errText, lastUpdatedAt: Date.now() }
                     : item
                 )
               : null
@@ -383,9 +472,43 @@ export function useBatchQueue({
       if (!files || files.length === 0) return;
       onError(null);
 
+      if (clientPolicy && (!clientPolicy.siteEnabled || !clientPolicy.conversionsEnabled)) {
+        const blockMsg =
+          clientPolicy.conversionBlockMessage ||
+          clientPolicy.blockMessage ||
+          'تم إيقاف عمليات التحويل مؤقتاً من قِبل المشرف.';
+        onError(blockMsg);
+        void reportClientTelemetry({
+          fileName: files.map((f) => f.name).join(', ').slice(0, 180),
+          fileSize: files.reduce((s, f) => s + f.size, 0),
+          operation: 'client-gate',
+          status: 'blocked',
+          blockReason: blockMsg,
+        }).then(() => onConversionTelemetryUpdated?.());
+        return;
+      }
+
+      const maxFileSizeMb = clientPolicy?.globalLimits?.maxFileSizeMb || 0;
+      if (maxFileSizeMb > 0) {
+        const oversized = files.find((f) => f.size > maxFileSizeMb * 1024 * 1024);
+        if (oversized) {
+          const msg = `يتجاوز حجم الملف "${oversized.name}" الحد الأقصى المسموح به من الإدارة (${maxFileSizeMb} ميجابايت).`;
+          onError(msg);
+          void reportClientTelemetry({
+            fileName: oversized.name,
+            fileSize: oversized.size,
+            operation: 'size-limit-check',
+            status: 'blocked',
+            blockReason: msg,
+          }).then(() => onConversionTelemetryUpdated?.());
+          return;
+        }
+      }
+
       const serverEligibleFiles: File[] = [];
       const clientFiles: File[] = [];
       const hasCustomPageRange = Boolean(customOptions?.pageRange?.enabled);
+      const allowBackgroundJobs = clientPolicy?.featureFlags?.allowBackgroundJobs !== false;
 
       for (const f of files) {
         const lower = f.name.toLowerCase();
@@ -400,7 +523,7 @@ export function useBatchQueue({
           Boolean(f.name.match(/\.(png|jpe?g|bmp|webp|gif|svg)$/i));
 
         if (isPdf || isImg) {
-          if (hasCustomPageRange) {
+          if (hasCustomPageRange || !allowBackgroundJobs) {
             clientFiles.push(f);
           } else {
             serverEligibleFiles.push(f);
@@ -448,7 +571,7 @@ export function useBatchQueue({
         void startQueueRunner();
       }
     },
-    [onError, startQueueRunner, submitFilesToServerBackgroundJobs]
+    [clientPolicy, onConversionTelemetryUpdated, onError, startQueueRunner, submitFilesToServerBackgroundJobs]
   );
 
   const handleRemoveQueueItem = useCallback((itemId: string) => {
@@ -606,6 +729,10 @@ export function useBatchQueue({
 
   const handleResumeRemainingBatch = useCallback(() => {
     if (!batchQueue) return;
+    if (clientPolicy && (!clientPolicy.siteEnabled || !clientPolicy.conversionsEnabled)) {
+      onError(clientPolicy.blockMessage || 'التحويل متوقف مؤقتاً من قِبل المشرف.');
+      return;
+    }
     const pendingItems = batchQueue.filter((it) => it.status === 'pending');
     if (pendingItems.length === 0) {
       onError('لا توجد ملفات في قائمة الانتظار للبدء بتحويلها.');
@@ -615,7 +742,7 @@ export function useBatchQueue({
     if (!isQueueProcessingRef.current) {
       void startQueueRunner();
     }
-  }, [batchQueue, onError, startQueueRunner]);
+  }, [batchQueue, clientPolicy, onError, startQueueRunner]);
 
   const handleRestoreSavedHistoryToBatch = useCallback(
     (savedItems: SavedConversion[]) => {
@@ -664,6 +791,10 @@ export function useBatchQueue({
   const handleRetryBatchItem = useCallback(
     async (itemId: string) => {
       if (!batchQueue) return;
+      if (clientPolicy && (!clientPolicy.siteEnabled || !clientPolicy.conversionsEnabled)) {
+        onError(clientPolicy.blockMessage || 'التحويل متوقف مؤقتاً من قِبل المشرف.');
+        return;
+      }
       const targetItem = batchQueue.find((it) => it.id === itemId);
       if (!targetItem) return;
 
@@ -697,7 +828,7 @@ export function useBatchQueue({
         void startQueueRunner();
       }
     },
-    [batchQueue, notify, startQueueRunner]
+    [batchQueue, clientPolicy, notify, onError, startQueueRunner]
   );
 
   const handleRetryFileSelected = useCallback(
@@ -745,6 +876,10 @@ export function useBatchQueue({
 
   const handleRetryAllFailed = useCallback(async () => {
     if (!batchQueue) return;
+    if (clientPolicy && (!clientPolicy.siteEnabled || !clientPolicy.conversionsEnabled)) {
+      onError(clientPolicy.blockMessage || 'التحويل متوقف مؤقتاً من قِبل المشرف.');
+      return;
+    }
     const failedItems = batchQueue.filter((it) => it.status === 'error');
     if (failedItems.length === 0) return;
 
@@ -774,7 +909,7 @@ export function useBatchQueue({
     if (!isQueueProcessingRef.current) {
       void startQueueRunner();
     }
-  }, [batchQueue, handleRetryBatchItem, notify, startQueueRunner]);
+  }, [batchQueue, clientPolicy, handleRetryBatchItem, notify, onError, startQueueRunner]);
 
   return {
     batchQueue,

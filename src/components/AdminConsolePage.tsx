@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   ArrowRight,
+  BarChart3,
   Check,
   CheckCircle2,
   Code2,
@@ -8,31 +9,56 @@ import {
   Download,
   ExternalLink,
   Globe,
+  History,
   Lock,
   LogOut,
+  PauseCircle,
+  PlayCircle,
   RefreshCw,
   Server,
   ShieldCheck,
+  Sliders,
   Terminal,
   Unlock,
+  Users,
 } from 'lucide-react';
-import { setStoredTeamToken } from '../utils/apiClient';
+import { getOrCreateClientId, setStoredTeamToken } from '../utils/apiClient';
 import {
   downloadLinksGuideBlob,
   revokeAllTeamSessions,
   saveTeamAuthConfig,
 } from '../api/teamAuthApi';
+import {
+  clearAdminLogs,
+  deleteAdminUser,
+  fetchAdminOverview,
+  saveAdminControls,
+  updateAdminUserControls,
+} from '../api/governanceApi';
 import { fetchModelPoolStatus } from '../api/modelsApi';
 import { ADMIN_CONSOLE_LINKS } from '../config/adminDeployment';
 import type { TeamAuthStatusState } from '../model/auth';
+import type { AdminOverviewResponse } from '../model/governance';
 import type { ManagedModelView } from '../model/models';
 import { AgentCliHubPage } from './AgentCliHubPage';
+import { AdminDashboardTab } from './admin/AdminDashboardTab';
+import { AdminUsersTab } from './admin/AdminUsersTab';
+import { AdminLogsTab } from './admin/AdminLogsTab';
+import { AdminControlsTab } from './admin/AdminControlsTab';
 import {
   PROJECT_CUSTOM_INSTRUCTIONS_EN,
   PROJECT_CUSTOM_INSTRUCTIONS_AR,
 } from '../data/projectCustomInstructions';
 
 export type { TeamAuthStatusState };
+type AdminTabId =
+  | 'dashboard'
+  | 'users'
+  | 'logs'
+  | 'controls'
+  | 'overview'
+  | 'instructions'
+  | 'cli';
 
 interface AdminConsolePageProps {
   authStatus: TeamAuthStatusState | null;
@@ -88,10 +114,18 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
   onAuthStatusUpdated,
   onExitAdmin,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'instructions' | 'cli'>(
-    'overview'
-  );
+  const [activeTab, setActiveTab] = useState<AdminTabId>('dashboard');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Governance Overview (Users, Logs, Site Controls)
+  const [overview, setOverview] = useState<AdminOverviewResponse | null>(null);
+  const [isLoadingOverview, setIsLoadingOverview] = useState(false);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
+  const [livePolling, setLivePolling] = useState(true);
+  const [inspectClientId, setInspectClientId] = useState<string | null>(null);
+  const [logsFilterClientId, setLogsFilterClientId] = useState<string | null>(null);
+  const currentAdminClientId =
+    typeof window !== 'undefined' ? getOrCreateClientId() : '';
 
   // Team Passcode state
   const [newCode, setNewCode] = useState('');
@@ -112,6 +146,28 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
   const [isDownloadingGuide, setIsDownloadingGuide] = useState(false);
   const [guideDownloadNotice, setGuideDownloadNotice] = useState<string | null>(null);
 
+  const loadGovernanceOverview = async (silent = false) => {
+    if (!silent) {
+      setIsLoadingOverview(true);
+      setOverviewError(null);
+    }
+    try {
+      const data = await fetchAdminOverview();
+      if (data) {
+        setOverview(data);
+        setOverviewError(null);
+      } else if (!silent) {
+        setOverviewError('تعذر جلب بيانات المشرف من الخادم. تأكد من الاتصال أو صلاحية الجلسة.');
+      }
+    } catch {
+      if (!silent) {
+        setOverviewError('حدث خطأ أثناء الاتصال بالخادم لجلب بيانات المستخدمين والسجلات.');
+      }
+    } finally {
+      if (!silent) setIsLoadingOverview(false);
+    }
+  };
+
   const loadModelsStatus = async (forceRefresh = false) => {
     setIsLoadingModels(true);
     try {
@@ -128,8 +184,19 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
   };
 
   useEffect(() => {
+    void loadGovernanceOverview(false);
     void loadModelsStatus(false);
   }, []);
+
+  useEffect(() => {
+    if (!livePolling) return;
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        void loadGovernanceOverview(true);
+      }
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [livePolling]);
 
   const handleCopy = async (key: string, value: string) => {
     try {
@@ -244,6 +311,62 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {overview?.siteControls && (
+            <button
+              type="button"
+              onClick={async () => {
+                const nextEnabled = !overview.siteControls.conversionsEnabled;
+                const res = await saveAdminControls({ conversionsEnabled: nextEnabled });
+                if (res.ok) await loadGovernanceOverview(true);
+              }}
+              className={`px-3 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+                overview.siteControls.conversionsEnabled
+                  ? 'border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/20'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+              }`}
+            >
+              {overview.siteControls.conversionsEnabled ? (
+                <>
+                  <PauseCircle className="w-4 h-4" />
+                  <span>إيقاف التحويلات فوراً</span>
+                </>
+              ) : (
+                <>
+                  <PlayCircle className="w-4 h-4" />
+                  <span>استئناف التحويلات</span>
+                </>
+              )}
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setLivePolling((v) => !v)}
+            className={`px-3 py-2 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+              livePolling
+                ? 'border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                : 'border-slate-200 dark:border-[#2A3142] bg-white dark:bg-[#141720] text-slate-600 dark:text-slate-300'
+            }`}
+            title="التحديث التلقائي المباشر كل 8 ثوانٍ"
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                livePolling ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+              }`}
+            />
+            <span>{livePolling ? 'تحديث تلقائي: حي' : 'تحديث يدوي'}</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={isLoadingOverview}
+            onClick={() => void loadGovernanceOverview(false)}
+            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-[#2A3142] bg-white dark:bg-[#141720] hover:bg-slate-50 dark:hover:bg-[#1B202C] text-slate-700 dark:text-slate-200 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingOverview ? 'animate-spin' : ''}`} />
+            <span>تحديث</span>
+          </button>
+
           <button
             type="button"
             disabled={isDownloadingGuide}
@@ -251,7 +374,7 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
             className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
           >
             <Download className="w-4 h-4" />
-            <span>{isDownloadingGuide ? 'جاري التنزيل...' : 'تنزيل ملف الروابط (.md)'}</span>
+            <span>{isDownloadingGuide ? 'جاري التنزيل...' : 'ملف الروابط (.md)'}</span>
           </button>
 
           <button
@@ -260,7 +383,7 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
             className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-[#2A3142] bg-white dark:bg-[#141720] hover:bg-slate-50 dark:hover:bg-[#1B202C] text-slate-800 dark:text-slate-200 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
           >
             <ArrowRight className="w-4 h-4" />
-            <span>واجهة المستخدم العادية</span>
+            <span>واجهة المستخدم</span>
           </button>
         </div>
       </div>
@@ -281,9 +404,73 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
         <button
           type="button"
           role="tab"
+          aria-selected={activeTab === 'dashboard'}
+          onClick={() => setActiveTab('dashboard')}
+          className={`px-3.5 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
+            activeTab === 'dashboard'
+              ? 'border-blue-600 text-blue-700 dark:text-blue-400'
+              : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <BarChart3 className="w-4 h-4" />
+          <span>لوحة المعلومات</span>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'users'}
+          onClick={() => setActiveTab('users')}
+          className={`px-3.5 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer tabular-nums whitespace-nowrap shrink-0 ${
+            activeTab === 'users'
+              ? 'border-blue-600 text-blue-700 dark:text-blue-400'
+              : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>المستخدمون والتحكم ({overview?.summary.totalUsers ?? 0})</span>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'logs'}
+          onClick={() => setActiveTab('logs')}
+          className={`px-3.5 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer tabular-nums ${
+            activeTab === 'logs'
+              ? 'border-blue-600 text-blue-700 dark:text-blue-400'
+              : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <History className="w-4 h-4" />
+          <span>سجل التحويلات ({overview?.logs.length ?? 0})</span>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'controls'}
+          onClick={() => setActiveTab('controls')}
+          className={`px-3.5 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
+            activeTab === 'controls'
+              ? 'border-blue-600 text-blue-700 dark:text-blue-400'
+              : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+          }`}
+        >
+          <Sliders className="w-4 h-4" />
+          <span>التحكم الشامل</span>
+          {overview &&
+            (!overview.siteControls.siteEnabled || !overview.siteControls.conversionsEnabled) && (
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+            )}
+        </button>
+
+        <button
+          type="button"
+          role="tab"
           aria-selected={activeTab === 'overview'}
           onClick={() => setActiveTab('overview')}
-          className={`px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
+          className={`px-3.5 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
             activeTab === 'overview'
               ? 'border-blue-600 text-blue-700 dark:text-blue-400'
               : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
@@ -298,14 +485,14 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
           role="tab"
           aria-selected={activeTab === 'instructions'}
           onClick={() => setActiveTab('instructions')}
-          className={`px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
+          className={`px-3.5 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
             activeTab === 'instructions'
               ? 'border-blue-600 text-blue-700 dark:text-blue-400'
               : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
           }`}
         >
           <Code2 className="w-4 h-4" />
-          <span>التعليمات الهندسية للوكلاء</span>
+          <span>التعليمات الهندسية</span>
         </button>
 
         <button
@@ -313,16 +500,115 @@ export const AdminConsolePage: React.FC<AdminConsolePageProps> = ({
           role="tab"
           aria-selected={activeTab === 'cli'}
           onClick={() => setActiveTab('cli')}
-          className={`px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
+          className={`px-3.5 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
             activeTab === 'cli'
               ? 'border-blue-600 text-blue-700 dark:text-blue-400'
               : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
           }`}
         >
           <Terminal className="w-4 h-4" />
-          <span>أدوات الأتمتة و CLI / MCP</span>
+          <span>CLI / MCP</span>
         </button>
       </nav>
+
+      {(activeTab === 'dashboard' ||
+        activeTab === 'users' ||
+        activeTab === 'logs' ||
+        activeTab === 'controls') &&
+        !overview && (
+          <section className="p-8 bg-white dark:bg-[#141720] border border-slate-200 dark:border-[#232938] rounded-2xl text-center space-y-3">
+            {overviewError ? (
+              <>
+                <p className="text-sm font-bold text-red-700 dark:text-red-300">{overviewError}</p>
+                <button
+                  type="button"
+                  onClick={() => void loadGovernanceOverview(false)}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>إعادة المحاولة</span>
+                </button>
+              </>
+            ) : (
+              <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                جاري تحميل بيانات لوحة المعلومات والمستخدمين وسجل التحويلات...
+              </p>
+            )}
+          </section>
+        )}
+
+      {/* Tab: Analytics Dashboard (Recharts) */}
+      {activeTab === 'dashboard' && overview && (
+        <AdminDashboardTab
+          summary={overview.summary}
+          users={overview.users}
+          logs={overview.logs}
+          onInspectUser={(clientId) => {
+            setInspectClientId(clientId);
+            setActiveTab('users');
+          }}
+          onOpenLogs={() => {
+            setLogsFilterClientId(null);
+            setActiveTab('logs');
+          }}
+        />
+      )}
+
+      {/* Tab: Users Monitoring & Per-User Controls */}
+      {activeTab === 'users' && overview && (
+        <AdminUsersTab
+          summary={overview.summary}
+          users={overview.users}
+          logs={overview.logs}
+          currentAdminClientId={currentAdminClientId}
+          initialSelectedClientId={inspectClientId}
+          onUpdateUser={async (clientId, patch) => {
+            const res = await updateAdminUserControls(clientId, patch);
+            if (res.ok) await loadGovernanceOverview(true);
+            return res.ok;
+          }}
+          onDeleteUser={async (clientId, includeLogs) => {
+            const ok = await deleteAdminUser(clientId, includeLogs);
+            if (ok) await loadGovernanceOverview(true);
+            return ok;
+          }}
+          onOpenUserLogs={(clientId) => {
+            setLogsFilterClientId(clientId);
+            setActiveTab('logs');
+          }}
+        />
+      )}
+
+      {/* Tab: Global Conversion Logs */}
+      {activeTab === 'logs' && overview && (
+        <AdminLogsTab
+          logs={overview.logs}
+          users={overview.users}
+          filterClientId={logsFilterClientId}
+          onClearFilterClient={() => setLogsFilterClientId(null)}
+          onSelectUserFromLog={(clientId) => {
+            setInspectClientId(clientId);
+            setActiveTab('users');
+          }}
+          onClearLogs={async (clientId) => {
+            const ok = await clearAdminLogs(clientId);
+            if (ok) await loadGovernanceOverview(true);
+            return ok;
+          }}
+        />
+      )}
+
+      {/* Tab: Global Platform Controls */}
+      {activeTab === 'controls' && overview && (
+        <AdminControlsTab
+          siteControls={overview.siteControls}
+          onSaveControls={async (patch) => {
+            const res = await saveAdminControls(patch);
+            if (res.ok) await loadGovernanceOverview(true);
+            return { ok: res.ok, error: res.error };
+          }}
+        />
+      )}
 
       {/* Tab 1: Links, Team Lock & Live Model Pool */}
       {activeTab === 'overview' && (

@@ -1,5 +1,50 @@
 const TEAM_TOKEN_STORAGE_KEY = 'studio_team_session_token';
+const CLIENT_ID_STORAGE_KEY = 'studio_client_id';
 export const AUTH_REQUIRED_EVENT = 'studio:auth-required';
+
+let memoryClientIdFallback = '';
+
+export function getOrCreateClientId(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const existing = window.localStorage?.getItem(CLIENT_ID_STORAGE_KEY);
+    if (existing && /^[a-zA-Z0-9_-]{3,64}$/.test(existing)) {
+      return existing;
+    }
+    const randomHex =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+        : `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const generated = `usr_${randomHex}`;
+    window.localStorage?.setItem(CLIENT_ID_STORAGE_KEY, generated);
+    return generated;
+  } catch {
+    if (!memoryClientIdFallback) {
+      memoryClientIdFallback = `usr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    }
+    return memoryClientIdFallback;
+  }
+}
+
+export function getBrowserDeviceLabel(): string {
+  if (typeof navigator === 'undefined') return '';
+  const ua = navigator.userAgent || '';
+  let browser = 'Browser';
+  if (/Edg\//i.test(ua)) browser = 'Edge';
+  else if (/OPR\/|Opera/i.test(ua)) browser = 'Opera';
+  else if (/Chrome\//i.test(ua) && !/Edg\//i.test(ua)) browser = 'Chrome';
+  else if (/Firefox\//i.test(ua)) browser = 'Firefox';
+  else if (/Safari\//i.test(ua) && !/Chrome\//i.test(ua)) browser = 'Safari';
+
+  let os = '';
+  if (/iPhone|iPad|iPod/i.test(ua)) os = 'iOS';
+  else if (/Android/i.test(ua)) os = 'Android';
+  else if (/Windows/i.test(ua)) os = 'Windows';
+  else if (/Mac OS X|Macintosh/i.test(ua)) os = 'macOS';
+  else if (/Linux/i.test(ua)) os = 'Linux';
+
+  return os ? `${browser} · ${os}` : browser;
+}
 
 export function getStoredTeamToken(): string {
   try {
@@ -24,19 +69,35 @@ export function setStoredTeamToken(token: string | null): void {
 
 export function buildApiHeaders(existing?: HeadersInit): HeadersInit | undefined {
   const token = getStoredTeamToken();
-  if (!token) return existing;
+  const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined';
+  const clientId = isBrowser ? getOrCreateClientId() : '';
+  const deviceLabel = isBrowser ? getBrowserDeviceLabel() : '';
+
+  if (!token && !clientId) return existing;
+
   if (existing instanceof Headers) {
     const cloned = new Headers(existing);
-    if (!cloned.has('X-Team-Session')) cloned.set('X-Team-Session', token);
+    if (token && !cloned.has('X-Team-Session')) cloned.set('X-Team-Session', token);
+    if (clientId && !cloned.has('X-Client-Id')) cloned.set('X-Client-Id', clientId);
+    if (deviceLabel && !cloned.has('X-Client-Device')) {
+      cloned.set('X-Client-Device', encodeURIComponent(deviceLabel));
+    }
     return cloned;
   }
   if (Array.isArray(existing)) {
-    return [...existing, ['X-Team-Session', token]];
+    const out: Array<[string, string]> = [...existing] as Array<[string, string]>;
+    if (token) out.push(['X-Team-Session', token]);
+    if (clientId) out.push(['X-Client-Id', clientId]);
+    if (deviceLabel) out.push(['X-Client-Device', encodeURIComponent(deviceLabel)]);
+    return out;
   }
-  return {
-    ...(existing || {}),
-    'X-Team-Session': token,
+  const merged: Record<string, string> = {
+    ...(existing as Record<string, string> | undefined),
   };
+  if (token) merged['X-Team-Session'] = token;
+  if (clientId) merged['X-Client-Id'] = clientId;
+  if (deviceLabel) merged['X-Client-Device'] = encodeURIComponent(deviceLabel);
+  return merged;
 }
 
 export interface ApiFetchOptions {

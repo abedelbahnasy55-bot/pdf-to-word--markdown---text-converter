@@ -33,7 +33,7 @@ export function apiCorsMiddleware(
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Team-Session"
+    "Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Team-Session, X-Client-Id, X-Client-Device, X-Telemetry-Managed"
   );
   res.setHeader("Access-Control-Max-Age", "86400");
   if (req.method === "OPTIONS") {

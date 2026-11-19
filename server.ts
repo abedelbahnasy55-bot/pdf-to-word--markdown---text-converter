@@ -9,6 +9,7 @@ import { polishBilingualBoundariesCore } from "./shared/arabicPipelineCore.js";
 import { registerSmartCompilerRoutes } from "./server/smartCompilerRoutes.js";
 import { registerBackgroundJobRoutes } from "./server/backgroundJobManager.js";
 import { registerTeamAuth } from "./server/teamAuth.js";
+import { registerGovernanceRoutes } from "./server/governanceManager.js";
 import {
   sharedModelPool,
   registerModelPoolRoutes,
@@ -62,14 +63,19 @@ app.use(payloadAndSyntaxErrorHandler);
 // Team Passcode Auth Gate & Public Share Config (registered before protected routes)
 registerTeamAuth(app, PROJECT_ROOT);
 
+// Platform Governance, User Tracking, Access Controls & Telemetry API (/api/client/*, /api/admin/*)
+const governanceManager = registerGovernanceRoutes(app, PROJECT_ROOT);
+
 // Health, ping, API documentation, links guide, and CLI/MCP bundle download endpoints
 registerInfoAndCliRoutes(app, PROJECT_ROOT);
 
 // Zero-quota digital-first PDF text extraction & vector underline endpoint
-registerDirectExtractRoutes(app);
+registerDirectExtractRoutes(app, governanceManager);
 
 // PDF Conversion Endpoint
 app.post("/api/convert-pdf", async (req, res) => {
+  const startedAt = Date.now();
+  const isManagedClient = req.headers["x-telemetry-managed"] === "1";
   try {
     const { pdfBase64, filename, options } = req.body;
 
@@ -467,6 +473,34 @@ OUTPUT DIRECTLY AS PRISTINE MARKDOWN ONLY (Do not wrap in JSON).`;
       plainText: cleanedPlainText,
     };
 
+    if (!isManagedClient) {
+      const identity = governanceManager.extractClientIdentity(req);
+      const wordsCount = cleanedPlainText.trim()
+        ? cleanedPlainText.trim().split(/\s+/).length
+        : 0;
+      const pagesEstimate = Math.max(
+        1,
+        (markdownContent.match(/---PAGE_BREAK---/g) || []).length + 1
+      );
+      governanceManager.recordConversionEvent({
+        clientId: identity.clientId,
+        ip: identity.ip,
+        deviceLabel: identity.deviceLabel,
+        fileName: filename || `${docTitle}.pdf`,
+        fileSize: Math.round((cleanBase64.length * 3) / 4),
+        mimeType,
+        operation: "convert-pdf",
+        status: "completed",
+        pagesCount: pagesEstimate,
+        wordsCount,
+        charsCount: markdownContent.length,
+        extractionMethod: "vision_ocr",
+        durationMs: Date.now() - startedAt,
+        startedAt,
+        completedAt: Date.now(),
+      });
+    }
+
     res.json({
       success: true,
       data: parsedData,
@@ -474,6 +508,26 @@ OUTPUT DIRECTLY AS PRISTINE MARKDOWN ONLY (Do not wrap in JSON).`;
   } catch (error: any) {
     const rawError = error?.message || String(error);
     console.error("PDF Conversion Error:", rawError);
+    if (!isManagedClient) {
+      try {
+        const identity = governanceManager.extractClientIdentity(req);
+        governanceManager.recordConversionEvent({
+          clientId: identity.clientId,
+          ip: identity.ip,
+          deviceLabel: identity.deviceLabel,
+          fileName: req.body?.filename || "document.pdf",
+          fileSize: 0,
+          operation: "convert-pdf",
+          status: "failed",
+          pagesCount: 0,
+          extractionMethod: "vision_ocr",
+          durationMs: Date.now() - startedAt,
+          errorMessage: rawError,
+          startedAt,
+          completedAt: Date.now(),
+        });
+      } catch {}
+    }
     const mapped = classifyGeminiHttpError(error);
     return res.status(mapped.status).json(mapped.body);
   }
@@ -714,6 +768,7 @@ registerModelPoolRoutes(app, getGeminiClient);
 
 // Register Persistent Background Conversion Jobs API (/api/jobs/*)
 const jobManager = registerBackgroundJobRoutes(app, PROJECT_ROOT, getGeminiClient);
+jobManager.setGovernanceManager(governanceManager);
 
 // Register Smart Compilation Studio routes (/api/compiler/*)
 registerSmartCompilerRoutes(app, getGeminiClient);

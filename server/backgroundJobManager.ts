@@ -25,6 +25,7 @@ import {
 import { buildDocxBinary, DOCX_MIME, type FontProfileId } from "../shared/typographyDocxCore.js";
 import { sharedModelPool, buildSafeThinkingConfig } from "./modelPool.js";
 import { executeWithModelPool } from "./clients/geminiClient.js";
+import type { GovernanceManager } from "./governanceManager.js";
 
 /**
  * 100% Free-tier Active Gemini OCR Model Pool.
@@ -60,6 +61,9 @@ export interface BackgroundJobMeta {
   errorMessage?: string;
   direction: "auto" | "rtl" | "ltr";
   title: string;
+  clientId?: string;
+  clientIp?: string;
+  clientDevice?: string;
 }
 
 export interface BackgroundJobResult {
@@ -161,6 +165,7 @@ export class BackgroundJobManager {
   private pausedJobIds = new Set<string>();
   private workerScheduled = false;
   private stopped = false;
+  private governance: GovernanceManager | null = null;
 
   constructor(projectRoot: string, getGeminiClient: () => GoogleGenAI) {
     this.jobsRootDir = path.join(projectRoot, ".jobs");
@@ -169,6 +174,14 @@ export class BackgroundJobManager {
     if (!fs.existsSync(this.jobsRootDir)) {
       fs.mkdirSync(this.jobsRootDir, { recursive: true });
     }
+  }
+
+  public setGovernanceManager(manager: GovernanceManager): void {
+    this.governance = manager;
+  }
+
+  public getGovernanceManager(): GovernanceManager | null {
+    return this.governance;
   }
 
   public shutdown(): void {
@@ -278,6 +291,9 @@ export class BackgroundJobManager {
     fileName: string;
     mimeType: string;
     direction?: "auto" | "rtl" | "ltr";
+    clientId?: string;
+    clientIp?: string;
+    clientDevice?: string;
   }): BackgroundJobMeta {
     const id = `job_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
     const dir = this.jobDir(id);
@@ -305,10 +321,27 @@ export class BackgroundJobManager {
       etaSeconds: null,
       direction: params.direction || "auto",
       title: baseTitle,
+      ...(params.clientId ? { clientId: params.clientId } : {}),
+      ...(params.clientIp ? { clientIp: params.clientIp } : {}),
+      ...(params.clientDevice ? { clientDevice: params.clientDevice } : {}),
     };
 
     this.writeMeta(meta);
     this.writeSavedPages(id, {});
+    this.governance?.recordConversionEvent({
+      jobId: meta.id,
+      clientId: meta.clientId || "server_anon",
+      ip: meta.clientIp || "unknown",
+      deviceLabel: meta.clientDevice || "خادم الخلفية",
+      fileName: meta.fileName,
+      fileSize: meta.fileSize,
+      mimeType: meta.mimeType,
+      operation: "background-job",
+      status: "started",
+      pagesCount: 0,
+      extractionMethod: "hybrid_background",
+      startedAt: now,
+    });
     this.scheduleWorker();
     return meta;
   }
@@ -354,6 +387,21 @@ export class BackgroundJobManager {
       meta.currentPhaseLabel = `تم الإيقاف المؤقت — التقدم محفوظ (${meta.completedPages} من ${meta.totalPages || "?"} صفحة)`;
       meta.etaSeconds = null;
       this.writeMeta(meta);
+      this.governance?.recordConversionEvent({
+        jobId: meta.id,
+        clientId: meta.clientId || "server_anon",
+        ip: meta.clientIp || "unknown",
+        deviceLabel: meta.clientDevice || "خادم الخلفية",
+        fileName: meta.fileName,
+        fileSize: meta.fileSize,
+        mimeType: meta.mimeType,
+        operation: "background-job",
+        status: "paused",
+        pagesCount: meta.completedPages || meta.totalPages || 0,
+        extractionMethod: "hybrid_background",
+        durationMs: meta.startedAt ? Date.now() - meta.startedAt : 0,
+        startedAt: meta.createdAt,
+      });
     }
     return meta;
   }
@@ -412,6 +460,22 @@ export class BackgroundJobManager {
           current.currentPhaseLabel = `توقف عند الصفحة ${current.completedPages}: ${current.errorMessage}`;
           current.etaSeconds = null;
           this.writeMeta(current);
+          this.governance?.recordConversionEvent({
+            jobId: current.id,
+            clientId: current.clientId || "server_anon",
+            ip: current.clientIp || "unknown",
+            deviceLabel: current.clientDevice || "خادم الخلفية",
+            fileName: current.fileName,
+            fileSize: current.fileSize,
+            mimeType: current.mimeType,
+            operation: "background-job",
+            status: "failed",
+            pagesCount: current.completedPages || current.totalPages || 0,
+            extractionMethod: "hybrid_background",
+            durationMs: current.startedAt ? Date.now() - current.startedAt : 0,
+            errorMessage: current.errorMessage,
+            startedAt: current.createdAt,
+          });
         }
       } finally {
         this.activeJobId = null;
@@ -555,6 +619,9 @@ Rules:
 
       if (!savedPages["1"]) {
         if (this.isPaused(id)) return;
+        if (this.governance && !this.governance.getSiteControls().featureFlags.allowOcrFallback) {
+          throw new Error("تم تعطيل معالجة الصور و OCR بالذكاء الاصطناعي مؤقتاً من قِبل المشرف.");
+        }
         const mime = meta.mimeType.startsWith("image/") ? meta.mimeType : "image/png";
         const md = await this.callFreeVisionModel(
           fileBuffer.toString("base64"),
@@ -626,6 +693,13 @@ Rules:
       // Persist all instantaneously extracted digital pages immediately
       this.writeSavedPages(id, savedPages);
 
+      const maxPagesLimit = this.governance?.getSiteControls().globalLimits.maxPagesPerConversion || 0;
+      if (maxPagesLimit > 0 && totalPages > maxPagesLimit) {
+        throw new Error(
+          `يتجاوز عدد صفحات المستند (${totalPages} صفحة) الحد الأقصى المسموح به من الإدارة (${maxPagesLimit} صفحة).`
+        );
+      }
+
       const batches = batchScannedPageNumbers(ocrPageNumbers, 3);
       meta.totalPages = totalPages;
       meta.digitalPages = digitalCount;
@@ -642,6 +716,16 @@ Rules:
           ? `تم استخراج جميع الصفحات الرقمية (${digitalCount}/${totalPages}) مباشرةً بسرعتها القصوى بدون استهلاك حصة!`
           : `فرز الصفحات: ${digitalCount} صفحة رقمية فورية · ${ocrPageNumbers.length} صفحة مصوّرة عبر ${batches.length} دفعات`;
       this.writeMeta(meta);
+
+      if (
+        ocrPageNumbers.length > 0 &&
+        this.governance &&
+        !this.governance.getSiteControls().featureFlags.allowOcrFallback
+      ) {
+        throw new Error(
+          "تم تعطيل التعرف البصري بالذكاء الاصطناعي (OCR) من قِبل المشرف؛ الملف يحتوي على صفحات مصوّرة غير رقمية."
+        );
+      }
 
       // Phase 2: Adaptive Free-Model Vision OCR strictly for scanned/incomplete pages
       const batchDurations: number[] = [];
@@ -772,6 +856,33 @@ Rules:
     meta.title = docTitle;
     meta.currentPhaseLabel = `اكتمل التحويل بنجاح (${totalPages} صفحة)`;
     this.writeMeta(meta);
+
+    const wordsCount = plainText.trim() ? plainText.trim().split(/\s+/).length : 0;
+    const extractionMethod =
+      digitalCount > 0 && ocrCount === 0
+        ? "direct_digital_extraction"
+        : digitalCount > 0 && ocrCount > 0
+        ? "hybrid_digital_ocr"
+        : "vision_ocr";
+
+    this.governance?.recordConversionEvent({
+      jobId: meta.id,
+      clientId: meta.clientId || "server_anon",
+      ip: meta.clientIp || "unknown",
+      deviceLabel: meta.clientDevice || "خادم الخلفية",
+      fileName: meta.fileName,
+      fileSize: meta.fileSize,
+      mimeType: meta.mimeType,
+      operation: "background-job",
+      status: "completed",
+      pagesCount: totalPages,
+      wordsCount,
+      charsCount: finalMarkdown.length,
+      extractionMethod,
+      durationMs: Date.now() - startedAt,
+      startedAt: meta.createdAt,
+      completedAt: meta.completedAt,
+    });
   }
 
   private async processPdfPageBatchWithBisection(
@@ -879,11 +990,36 @@ export function registerBackgroundJobRoutes(
         });
       }
 
+      const governance = manager.getGovernanceManager();
+      const identity = governance?.extractClientIdentity(req);
+      if (governance && identity) {
+        const authz = governance.checkActionAllowed(identity, "background_job", {
+          fileSizeBytes: fileBuffer.byteLength,
+          fileName,
+          operation: "background-job",
+        });
+        if (!authz.allowed) {
+          return res.status(authz.status).json({
+            success: false,
+            blocked: true,
+            blockScope: authz.blockScope,
+            error: authz.error,
+          });
+        }
+      }
+
       const job = manager.createJobFromBuffer({
         fileBuffer,
         fileName,
         mimeType,
         direction,
+        ...(identity
+          ? {
+              clientId: identity.clientId,
+              clientIp: identity.ip,
+              clientDevice: identity.deviceLabel,
+            }
+          : {}),
       });
 
       return res.status(201).json({ success: true, job });

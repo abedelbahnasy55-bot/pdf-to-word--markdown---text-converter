@@ -43,14 +43,19 @@ graph TD
 - Generates RTL/LTR schema-valid Word documents with `<w:bidi/>`, Arabic presentation-form normalization, KaTeX math support, Heritage/Publication typography profiles, and real underline runs (`<u>...</u>`) without requiring any external user login.
 
 ### F. Idle Resilience, Hardening & Team Access Gate (`server/teamAuth.ts`, `server/middleware/errorHandlers.ts`, `src/utils/apiClient.ts`, `src/utils/connectionKeepAlive.ts`)
-- `index.html` freezes `window.fetch`; internal app calls route through `apiFetch()` (automatically retrying `502`/`503`/`504` and attaching `X-Team-Session`).
+- `index.html` freezes `window.fetch`; internal app calls route through `apiFetch()` (automatically retrying `502`/`503`/`504`, attaching `X-Team-Session`, `X-Client-Id`, and `X-Client-Device`).
 - Server configures `keepAliveTimeout = 620s` and `GET /api/ping`, paired with client wake-sync without jarring `window.location.reload()`.
 - Security hardening sets baseline headers (`X-Content-Type-Options: nosniff`, `Referrer-Policy`, `X-Frame-Options: SAMEORIGIN`), reflects request `Origin` with `Vary: Origin` + `Access-Control-Allow-Credentials: true` on CORS requests, validates strict job IDs against path traversal, and protects `/api/info` when Team Lock is enabled.
 
-### G. Project Directory Map
-- `server/` — Express controllers (`controllers/`), `backgroundJobManager.ts`, `modelPool.ts`, `clients/geminiClient.ts`, `middleware/errorHandlers.ts`, `config/runtimeConfig.ts`, `teamAuth.ts`, `smartCompilerRoutes.ts`, `pdfUnderlineExtractor.ts`
+### G. User Activity Governance, Quotas & Granular Controls (`server/governanceManager.ts`, `.jobs/governance.json`)
+- Tracks visitors cleanly via persistent client identity (`X-Client-Id` + `X-Client-Device` + IP), per-file conversion logs (`started`, `processing`, `completed`, `paused`, `failed`, `blocked`), exact page/word/char counts, extraction method, duration, and error/block reasons.
+- Enforces global controls (full site lock with custom maintenance message, global conversion pause with custom message, top announcement banner, feature toggles for OCR/Background Jobs/Smart Compiler/DOCX export, and daily/size/page quotas) as well as per-user granular modes (`allow`, `block_conversions`, `block_site`, optional `blockMatchingIpToo`, custom user messages, and custom daily page limits).
+- All enforcement runs server-side with HTTP `403` and custom admin messages while keeping `/?admin=1` (`#admin`) and `/api/admin/*` routes reachable so the supervisor is never locked out.
+
+### H. Project Directory Map
+- `server/` — Express controllers (`controllers/`), `governanceManager.ts`, `backgroundJobManager.ts`, `modelPool.ts`, `clients/geminiClient.ts`, `middleware/errorHandlers.ts`, `config/runtimeConfig.ts`, `teamAuth.ts`, `smartCompilerRoutes.ts`, `pdfUnderlineExtractor.ts`
 - `shared/` — Cross-runtime Arabic, Quranic, semantic search, compilation, and DOCX OOXML core modules shared across frontend, backend, and CLI scripts
-- `src/` — Typed React SPA with extracted `api/`, `hooks/`, `model/`, `config/`, `utils/`, and accessible UI components under `components/`
+- `src/` — Typed React SPA with extracted `api/`, `hooks/`, `model/`, `config/`, `utils/`, and accessible UI components under `components/` (including `components/admin/` for `AdminUsersTab`, `AdminLogsTab`, `AdminControlsTab`, and `AccessBlockedScreen`)
 - `scripts/` — Standalone Node.js CLI batch runner, MCP v2.0 stdio server, and Python batch runner
 - `tests/` — Vitest characterization and regression suites (`npm test`) and golden fixtures (`tests/golden/`)
 

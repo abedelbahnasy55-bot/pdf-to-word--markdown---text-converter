@@ -5,21 +5,24 @@ export async function extractDirectPdfRequest(params: {
   pdfBase64: string;
   filename: string;
   signal?: AbortSignal;
-}): Promise<{ ok: boolean; data: any }> {
+}): Promise<{ ok: boolean; status?: number; data: any }> {
   const res = await apiFetch('/api/extract-direct-pdf', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Telemetry-Managed': '1',
+    },
     signal: params.signal,
     body: JSON.stringify({
       pdfBase64: params.pdfBase64,
       filename: params.filename,
     }),
   });
+  const data = await res.json().catch(() => null);
   if (!res.ok) {
-    return { ok: false, data: null };
+    return { ok: false, status: res.status, data };
   }
-  const data = await res.json();
-  return { ok: true, data };
+  return { ok: true, status: res.status, data };
 }
 
 export async function convertPdfChunkRequest(params: {
@@ -32,6 +35,7 @@ export async function convertPdfChunkRequest(params: {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'X-Telemetry-Managed': '1',
     },
     signal: params.signal,
     body: JSON.stringify({

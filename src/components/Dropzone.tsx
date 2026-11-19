@@ -17,12 +17,18 @@ import { ConversionOptions } from '../types';
 interface DropzoneProps {
   onStartConversion: (files: File[], customOptions?: ConversionOptions) => void;
   isProcessing: boolean;
+  conversionsBlockedMessage?: string | null;
+  maxFileSizeMb?: number;
 }
 
 export const Dropzone: React.FC<DropzoneProps> = ({
   onStartConversion,
   isProcessing,
+  conversionsBlockedMessage,
+  maxFileSizeMb = 0,
 }) => {
+  const isBlocked = Boolean(conversionsBlockedMessage);
+  const isDisabled = isProcessing || isBlocked;
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -133,6 +139,21 @@ export const Dropzone: React.FC<DropzoneProps> = ({
 
   return (
     <div className="w-full max-w-2xl mx-auto space-y-4">
+      {conversionsBlockedMessage && (
+        <div
+          role="alert"
+          className="p-4 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-300 dark:border-amber-500/40 text-amber-900 dark:text-amber-200 flex items-start gap-3 shadow-2xs"
+        >
+          <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-1 text-right">
+            <p className="text-xs sm:text-sm font-extrabold">التحويل متوقف مؤقتاً من قِبل الإدارة</p>
+            <p className="text-xs text-amber-800 dark:text-amber-200/90 leading-relaxed whitespace-pre-wrap">
+              {conversionsBlockedMessage}
+            </p>
+          </div>
+        </div>
+      )}
+
       {errorMessage && (
         <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-300 text-xs font-semibold flex items-center gap-2">
           <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
@@ -155,25 +176,35 @@ export const Dropzone: React.FC<DropzoneProps> = ({
           <div
             id="pdf-dropzone-container"
             role="button"
-            tabIndex={isProcessing ? -1 : 0}
-            aria-disabled={isProcessing}
+            tabIndex={isDisabled ? -1 : 0}
+            aria-disabled={isDisabled}
             aria-label="اسحب ملفات PDF أو Word أو الصور هنا أو اضغط لاختيار ملفات"
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onClick={() => !isProcessing && fileInputRef.current?.click()}
+            onDrop={(e) => {
+              if (isDisabled) {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragOver(false);
+                return;
+              }
+              handleDrop(e);
+            }}
+            onClick={() => !isDisabled && fileInputRef.current?.click()}
             onKeyDown={(e) => {
-              if (!isProcessing && (e.key === 'Enter' || e.key === ' ')) {
+              if (!isDisabled && (e.key === 'Enter' || e.key === ' ')) {
                 e.preventDefault();
                 fileInputRef.current?.click();
               }
             }}
-            className={`border-2 border-dashed rounded-2xl p-8 sm:p-12 text-center cursor-pointer transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-              isDragOver
-                ? 'border-blue-500 bg-blue-50/70 dark:bg-blue-500/10 scale-[1.01]'
-                : 'border-slate-300 dark:border-[#2A3142] bg-white dark:bg-[#141720] hover:border-blue-500 dark:hover:border-blue-500/70 hover:bg-slate-50/60 dark:hover:bg-[#171C28]'
-            } ${isProcessing ? 'pointer-events-none opacity-50' : ''}`}
+            className={`border-2 border-dashed rounded-2xl p-8 sm:p-12 text-center transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+              isDisabled
+                ? 'border-slate-200 dark:border-[#232938] bg-slate-50/80 dark:bg-[#11141C] opacity-60 cursor-not-allowed'
+                : isDragOver
+                ? 'border-blue-500 bg-blue-50/70 dark:bg-blue-500/10 scale-[1.01] cursor-pointer'
+                : 'border-slate-300 dark:border-[#2A3142] bg-white dark:bg-[#141720] hover:border-blue-500 dark:hover:border-blue-500/70 hover:bg-slate-50/60 dark:hover:bg-[#171C28] cursor-pointer'
+            }`}
           >
             <div className="flex flex-col items-center justify-center space-y-3.5">
               <div
@@ -209,9 +240,14 @@ export const Dropzone: React.FC<DropzoneProps> = ({
                 </button>
               </div>
 
-              <div className="pt-2 flex items-center justify-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+              <div className="pt-2 flex flex-wrap items-center justify-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                 <Server className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <span>المعالجة المستمرة على الخادم: تستمر حتى عند إغلاق المتصفح أو إطفاء الجهاز</span>
+                {maxFileSizeMb > 0 && (
+                  <span className="font-mono font-semibold text-slate-600 dark:text-slate-300">
+                    · الحد الأقصى {maxFileSizeMb} MB
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -440,7 +476,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
               id="btn-start-convert-main"
               type="button"
               onClick={handleStart}
-              disabled={isProcessing}
+              disabled={isDisabled}
               className="w-full py-3 px-5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <Play className="w-4 h-4 fill-white" />

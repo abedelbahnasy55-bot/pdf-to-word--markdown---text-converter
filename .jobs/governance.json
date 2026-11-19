@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "siteControls": {
+    "siteEnabled": true,
+    "siteDisabledMessage": "المنصة متوقفة مؤقتاً من قِبل الإدارة للصيانة والتحديث، يرجى المحاولة لاحقاً.",
+    "conversionsEnabled": true,
+    "conversionsPausedMessage": "تم إيقاف عمليات التحويل مؤقتاً من قِبل المشرف. يرجى المحاولة بعد قليل أو مراجعة الإدارة.",
+    "announcementBanner": {
+      "enabled": false,
+      "text": "",
+      "tone": "info"
+    },
+    "featureFlags": {
+      "allowSmartCompiler": true,
+      "allowBackgroundJobs": true,
+      "allowDocxExport": true,
+      "allowOcrFallback": true
+    },
+    "globalLimits": {
+      "maxPagesPerConversion": 0,
+      "maxFileSizeMb": 0,
+      "dailyConversionQuotaPerUser": 0,
+      "dailyPageQuotaPerUser": 0
+    },
+    "updatedAt": 1795089588225
+  },
+  "users": {},
+  "conversionLogs": []
+}

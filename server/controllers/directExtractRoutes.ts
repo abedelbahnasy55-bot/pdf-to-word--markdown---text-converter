@@ -1,8 +1,14 @@
 import type { Express } from "express";
 import { extractDirectTextFromPdf } from "../services/directPdfExtractor.js";
+import type { GovernanceManager } from "../governanceManager.js";
 
-export function registerDirectExtractRoutes(app: Express): void {
+export function registerDirectExtractRoutes(
+  app: Express,
+  governance?: GovernanceManager
+): void {
   app.post("/api/extract-direct-pdf", async (req, res) => {
+    const startedAt = Date.now();
+    const isManagedClient = req.headers["x-telemetry-managed"] === "1";
     try {
       const { pdfBase64, filename } = req.body;
       if (!pdfBase64) {
@@ -22,6 +28,28 @@ export function registerDirectExtractRoutes(app: Express): void {
       }
 
       const isArabic = (result.markdown.match(/[\u0600-\u06FF]/g) || []).length > 20;
+
+      if (governance && !isManagedClient) {
+        const identity = governance.extractClientIdentity(req);
+        const wordsCount = result.text.trim() ? result.text.trim().split(/\s+/).length : 0;
+        governance.recordConversionEvent({
+          clientId: identity.clientId,
+          ip: identity.ip,
+          deviceLabel: identity.deviceLabel,
+          fileName: filename || "document.pdf",
+          fileSize: pdfBuffer.byteLength,
+          mimeType: "application/pdf",
+          operation: "direct-extract",
+          status: "completed",
+          pagesCount: result.totalPages || 1,
+          wordsCount,
+          charsCount: result.markdown.length,
+          extractionMethod: "direct_digital_extraction",
+          durationMs: Date.now() - startedAt,
+          startedAt,
+          completedAt: Date.now(),
+        });
+      }
 
       return res.json({
         success: true,

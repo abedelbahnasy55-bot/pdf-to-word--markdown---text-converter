@@ -38,7 +38,9 @@ import { useConnectionKeepAlive } from './utils/connectionKeepAlive';
 import { useTeamAuth } from './hooks/useTeamAuth';
 import { useServerJobs } from './hooks/useServerJobs';
 import { useBatchQueue } from './hooks/useBatchQueue';
-import { AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { useClientGovernance } from './hooks/useClientGovernance';
+import { AccessBlockedScreen } from './components/AccessBlockedScreen';
+import { AlertCircle, CheckCircle2, Info, AlertTriangle, X } from 'lucide-react';
 
 export default function App() {
   const { theme, toggleTheme } = useTheme();
@@ -52,6 +54,10 @@ export default function App() {
     refreshAuthStatus,
     handleExitAdminMode,
   } = useTeamAuth(useCallback(() => setActiveView('home'), []));
+
+  const { clientPolicy, isLoadingPolicy, refreshClientPolicy } = useClientGovernance({
+    enabled: isTeamAccessAllowed,
+  });
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingFileName, setProcessingFileName] = useState('');
@@ -125,6 +131,7 @@ export default function App() {
     refreshHistoryList,
     notify,
     onError: handleServerJobError,
+    onPolicySync: refreshClientPolicy,
   });
 
   const {
@@ -170,6 +177,8 @@ export default function App() {
     submitFilesToServerBackgroundJobs,
     notify,
     onError: setErrorMessage,
+    clientPolicy,
+    onConversionTelemetryUpdated: refreshClientPolicy,
   });
 
   // Load conversion history on initial mount & restore any active/previous session
@@ -204,6 +213,7 @@ export default function App() {
     enabled: isTeamAccessAllowed,
     onWakeSync: async () => {
       await refreshAuthStatus();
+      await refreshClientPolicy();
       await fetchServerJobs();
     },
     onAuthRequired: () => {
@@ -427,6 +437,10 @@ export default function App() {
   };
 
   const handleDownloadSingleDocx = async (res: ConversionResult, fileName: string, itemId?: string) => {
+    if (clientPolicy?.featureFlags?.allowDocxExport === false) {
+      setErrorMessage('تم تعطيل ميزة تصدير ملفات Word (.docx) مؤقتاً من قِبل المشرف.');
+      return;
+    }
     try {
       const isRtl = res.textDirection === 'rtl' || Boolean(res.hasArabicText);
       const baseName = fileName.replace(/\.[^/.]+$/, '');
@@ -527,11 +541,33 @@ export default function App() {
         onToggleTheme={toggleTheme}
         onAuthenticated={async () => {
           await refreshAuthStatus();
+          await refreshClientPolicy();
           await fetchServerJobs();
         }}
       />
     );
   }
+
+  if (!isAdminMode && clientPolicy && !clientPolicy.siteEnabled) {
+    return (
+      <AccessBlockedScreen
+        message={clientPolicy.siteBlockMessage || clientPolicy.blockMessage}
+        clientId={clientPolicy.clientId}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        isChecking={isLoadingPolicy}
+        onRetryCheck={() => void refreshClientPolicy()}
+      />
+    );
+  }
+
+  const allowSmartCompiler = clientPolicy?.featureFlags?.allowSmartCompiler !== false;
+  const conversionsBlockedMessage =
+    clientPolicy && !clientPolicy.conversionsEnabled
+      ? clientPolicy.conversionBlockMessage ||
+        clientPolicy.blockMessage ||
+        'تم إيقاف عمليات التحويل مؤقتاً من قِبل المشرف.'
+      : null;
 
   return (
     <div className="min-h-screen bg-[#FBFBF9] dark:bg-[#0B0D12] text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors">
@@ -547,7 +583,11 @@ export default function App() {
           handleRestoreSavedHistoryToBatch(savedItems);
           if (savedItems.length > 0) setActiveView('home');
         }}
-        onOpenSmartCompiler={() => setActiveView(activeView === 'compiler' ? 'home' : 'compiler')}
+        onOpenSmartCompiler={
+          allowSmartCompiler
+            ? () => setActiveView(activeView === 'compiler' ? 'home' : 'compiler')
+            : undefined
+        }
         isShowingSmartCompiler={activeView === 'compiler'}
         theme={theme}
         onToggleTheme={toggleTheme}
@@ -563,6 +603,33 @@ export default function App() {
             : 'flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-10 flex flex-col justify-center'
         }
       >
+        {/* Global Admin Announcement Banner */}
+        {!isAdminMode &&
+          clientPolicy?.announcementBanner?.enabled &&
+          clientPolicy.announcementBanner.text.trim() && (
+            <div
+              dir="rtl"
+              className={`max-w-3xl mx-auto w-full mb-5 p-3.5 rounded-xl border flex items-start gap-2.5 shadow-2xs ${
+                clientPolicy.announcementBanner.tone === 'danger'
+                  ? 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30 text-red-800 dark:text-red-200'
+                  : clientPolicy.announcementBanner.tone === 'warning'
+                  ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30 text-amber-900 dark:text-amber-200'
+                  : 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30 text-blue-900 dark:text-blue-200'
+              }`}
+            >
+              {clientPolicy.announcementBanner.tone === 'danger' ? (
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600 dark:text-red-400" />
+              ) : clientPolicy.announcementBanner.tone === 'warning' ? (
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+              ) : (
+                <Info className="w-4 h-4 shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" />
+              )}
+              <p className="text-xs sm:text-sm font-semibold leading-relaxed whitespace-pre-wrap">
+                {clientPolicy.announcementBanner.text}
+              </p>
+            </div>
+          )}
+
         {/* Notification message */}
         {notificationMessage && (
           <div className="max-w-2xl mx-auto w-full mb-6 p-4 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 text-emerald-900 dark:text-emerald-200 flex items-center justify-between gap-3 shadow-xs animate-fadeIn">
@@ -633,7 +700,7 @@ export default function App() {
         )}
 
         {/* State 1.75: Editorial Compilation Studio & Semantic Search */}
-        {!isAdminMode && !isProcessing && activeView === 'compiler' && (
+        {!isAdminMode && !isProcessing && activeView === 'compiler' && allowSmartCompiler && (
           <SmartCompilerWorkspace
             batchQueue={batchQueue}
             savedItems={savedItems}
@@ -714,6 +781,8 @@ export default function App() {
               <Dropzone
                 onStartConversion={handleStartConversion}
                 isProcessing={isProcessing}
+                conversionsBlockedMessage={conversionsBlockedMessage}
+                maxFileSizeMb={clientPolicy?.globalLimits?.maxFileSizeMb}
               />
             )}
 
@@ -756,6 +825,8 @@ export default function App() {
                 <Dropzone
                   onStartConversion={handleStartConversion}
                   isProcessing={isProcessing}
+                  conversionsBlockedMessage={conversionsBlockedMessage}
+                  maxFileSizeMb={clientPolicy?.globalLimits?.maxFileSizeMb}
                 />
               )
             )}

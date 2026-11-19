@@ -16,6 +16,7 @@ interface UseServerJobsParams {
   refreshHistoryList: () => Promise<void>;
   notify: (msg: string, durationMs?: number) => void;
   onError: (msg: string) => void;
+  onPolicySync?: () => void;
 }
 
 export function useServerJobs({
@@ -23,6 +24,7 @@ export function useServerJobs({
   refreshHistoryList,
   notify,
   onError,
+  onPolicySync,
 }: UseServerJobsParams) {
   const [serverJobs, setServerJobs] = useState<ServerJobMeta[]>([]);
   const [loadingServerJobId, setLoadingServerJobId] = useState<string | null>(null);
@@ -58,10 +60,11 @@ export function useServerJobs({
             data.result.totalPages || jobMeta.totalPages || 1
           );
           await refreshHistoryList();
+          onPolicySync?.();
         }
       } catch {}
     },
-    [refreshHistoryList]
+    [onPolicySync, refreshHistoryList]
   );
 
   const fetchServerJobs = useCallback(async () => {
@@ -133,8 +136,9 @@ export function useServerJobs({
       if (failedFiles.length > 0) {
         onError(failedFiles.join(' · '));
       }
+      onPolicySync?.();
     },
-    [fetchServerJobs, notify, onError]
+    [fetchServerJobs, notify, onError, onPolicySync]
   );
 
   const handlePauseServerJob = useCallback(

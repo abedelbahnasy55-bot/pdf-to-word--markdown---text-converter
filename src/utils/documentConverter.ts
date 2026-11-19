@@ -567,11 +567,21 @@ export async function convertDocumentFile(
         filename: file.name,
         signal: abortSignal,
       });
+      if (directRes.status === 403 || directRes.data?.blocked) {
+        const blockErr: any = new Error(
+          directRes.data?.error || 'تم تقييد عملية التحويل مؤقتاً من قِبل المشرف.'
+        );
+        blockErr.isBlocked = true;
+        throw blockErr;
+      }
       if (directRes.ok) {
         directJson = directRes.data;
       }
     } catch (directErr: any) {
       assertNotAborted(abortSignal);
+      if (directErr?.isBlocked) {
+        throw directErr;
+      }
       console.warn('[Converter] Direct text extraction bypassed, falling back to AI:', directErr?.message || directErr);
     }
 
@@ -931,6 +941,12 @@ export async function convertDocumentFile(
             lastChunkError = null;
             isLastThrottled = false;
             break;
+          } else if (response.status === 403 || data?.blocked) {
+            const blockErr: any = new Error(
+              data?.error || 'تم تقييد عملية التحويل مؤقتاً من قِبل المشرف.'
+            );
+            blockErr.isBlocked = true;
+            throw blockErr;
           } else {
             const isThrottled =
               response.status === 429 ||
@@ -1037,6 +1053,9 @@ export async function convertDocumentFile(
           }
         } catch (err: any) {
           assertNotAborted(abortSignal);
+          if (err?.isBlocked) {
+            throw err;
+          }
           const isTimeout = err?.name === 'TimeoutError' || String(err).includes('timed out') || String(err).includes('aborted');
           const errMsg = isTimeout
             ? `استغرقت استجابة الصفحات (${currentTask.startPage}-${currentTask.endPage}) وقتاً أطول من المتوقع، جاري إعادة المحاولة التلقائية...`
